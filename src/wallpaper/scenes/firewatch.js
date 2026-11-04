@@ -6,6 +6,7 @@ export default build(`
 #define TREE_DIST 220.0
 #define HAS_WATER 0
 #define WAVE_AMP 0.03
+#define LEAVES 0.25
 #define WAVE_DIR vec2(0.0)
 
 const vec3 TB = vec3(12.0, 22.0, 52.0); // Turmfuss
@@ -36,7 +37,7 @@ float sdObj(vec3 p, out float m) {
   m = 0.0;
   vec3 q = p - TB;
   float bound = length(q.xz) - 4.5;
-  if (bound > 1.0 || q.y < -1.0 || q.y > 20.0) return max(bound, 0.5);
+  if (bound > 1.0 || q.y < -1.0 || q.y > 20.0) return max(max(bound, q.y - 19.0), max(-1.0 - q.y, 0.05));
   float best = 1e9;
   // Beine + Ringe
   float legs = 1e9;

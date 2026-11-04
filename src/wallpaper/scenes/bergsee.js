@@ -209,7 +209,7 @@ float softShadow(vec3 ro, vec3 rd) {
   float res = 1.0, t = 0.5;
   for (int i = 0; i < 40; i++) {
     vec3 p = ro + rd * t;
-    float h = p.y - groundH(p.xz, 4);
+    float h = p.y - groundH(p.xz, t < 8.0 ? 8 : 4);
     res = min(res, 10.0 * h / t);
     if (res < 0.01 || p.y > 220.0) break;
     t += clamp(h * 0.6, 0.5, 25.0);
@@ -231,6 +231,7 @@ vec3 fogColor(vec3 rd) {
 }
 
 vec3 shadeTerrain(vec3 p, vec3 rd, float t, float g, bool cheap) {
+  { float gg; p.y = sceneH(p.xz, t, gg); g = gg; }
   vec3 n = calcNormal(p.xz, t);
   float tree = p.y - g;
   float isTree = smoothstep(0.08, 0.3, tree);
@@ -255,7 +256,7 @@ vec3 shadeTerrain(vec3 p, vec3 rd, float t, float g, bool cheap) {
   // Licht
   float dif = max(dot(n, lightDir), 0.0);
   float sh = 1.0;
-  if (!cheap && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * 0.3, lightDir);
+  if (!cheap && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.3 + 0.002 * t), lightDir);
   vec3 amb = skyBase(vec3(0.0, 1.0, 0.0)) * (0.4 + 0.6 * n.y) * 0.6;
   amb += skyBase(normalize(vec3(-lightDir.x, 0.1, -lightDir.z))) * 0.15;
   float ao = mix(0.55, 1.0, smoothstep(0.0, 3.0, tree)) ;
@@ -363,6 +364,7 @@ void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
 
   vec3 ro = vec3(uMouse.x * 0.6, 2.3 + uMouse.y * 0.15, 0.0);
+  ro += vec3(sin(uTime * 0.11) * 0.06, sin(uTime * 0.17) * 0.035, sin(uTime * 0.07) * 0.05);
   float yaw = uMouse.x * 0.035;
   float pitch = 0.035 + uMouse.y * 0.02;
   vec3 fw = normalize(vec3(sin(yaw), pitch, cos(yaw)));
@@ -401,6 +403,19 @@ void main() {
       float ring = sin((length(rf) - ph * 0.5) * 60.0) * smoothstep(0.5, 0.0, length(rf)) * (1.0 - ph);
       n.xz += normalize(rf + 1e-4) * ring * 0.15 * uRain;
       n = normalize(n);
+    }
+    // springende Fische
+    {
+      vec2 fc = floor(p.xz / 9.0);
+      float fh = hash(fc + 41.0);
+      if (fh > 0.55) {
+        vec2 ctr = (fc + 0.2 + 0.6 * vec2(hash(fc + 2.0), hash(fc + 7.0))) * 9.0;
+        float ph = fract(uTime * (0.05 + fh * 0.04) + fh * 10.0);
+        float dd = length(p.xz - ctr);
+        float ring = sin((dd - ph * 4.0) * 9.0) * smoothstep(ph * 4.0 + 0.6, ph * 4.0, dd) * smoothstep(ph * 4.0 - 1.5, ph * 4.0, dd) * (1.0 - ph);
+        n.xz += normalize(p.xz - ctr + 1e-4) * ring * 0.12;
+        n = normalize(n);
+      }
     }
     vec3 rr = reflect(rd, n);
     rr.y = abs(rr.y);

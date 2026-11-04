@@ -6,6 +6,8 @@ export default build(`
 #define TREE_DIST 160.0
 #define HAS_WATER 0
 #define WAVE_AMP 0.03
+#define LEAVES 0.4
+#define BUTTERFLIES 0.6
 #define WAVE_DIR vec2(0.0)
 
 const vec3 FIRE = vec3(0.6, 0.0, 7.5);
@@ -97,6 +99,7 @@ vec3 sceneLights(vec3 p, vec3 n) {
 vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
   float fl = fireFlicker(5.0);
   col += pointGlow(ro, rd, t, FIRE + vec3(0, 0.5, 0), vec3(1.0, 0.45, 0.12) * fl, 1.3) * (0.5 + nightAmt);
+  col = smokeColumn(ro, rd, t, col, FIRE + vec3(0.0, 1.0, 0.0), 0.6, 0.2);
   // Funken
   for (int i = 0; i < 16; i++) {
     float fi = float(i);

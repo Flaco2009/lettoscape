@@ -6,6 +6,8 @@ export default build(`
 #define TREE_DIST 170.0
 #define HAS_WATER 0
 #define WAVE_AMP 0.03
+#define LEAVES 0.6
+#define BATS 0.4
 #define WAVE_DIR vec2(0.0)
 
 const vec3 H = vec3(2.0, 0.6, 14.0);
@@ -32,7 +34,7 @@ float forestMask(vec2 p, float g) {
 float sdObj(vec3 p, out float m) {
   m = 0.0;
   vec3 q = toHut(p);
-  if (length(q.xz) > 7.0) return length(q.xz) - 6.5;
+  if (length(q.xz) > 7.0 || q.y > 6.0) return max(length(q.xz) - 6.5, q.y - 5.5);
   float best = 1e9;
   // Blockwaende (leicht gerundete Stamm-Rillen)
   float body = sdBox(q - vec3(0, 1.35, 0), vec3(2.4, 1.35, 1.8)) - 0.03 * abs(sin(q.y * 11.0));
@@ -104,22 +106,7 @@ vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
   col += pointGlow(ro, rd, t, fromHut(vec3(-1.4, 1.55, -1.9)), windowGlow(4.0), 0.9) * nightAmt * 0.7;
   col += pointGlow(ro, rd, t, fromHut(vec3(1.4, 1.55, -1.9)), windowGlow(5.0), 0.9) * nightAmt * 0.7;
   // Kaminrauch
-  vec3 S = fromHut(vec3(1.4, 5.1, 0.7));
-  vec2 rxz = rd.xz;
-  float s = dot(S.xz - ro.xz, rxz) / max(dot(rxz, rxz), 1e-4);
-  if (s > 0.0 && s < t) {
-    vec3 P = ro + rd * s;
-    float hy = P.y - S.y;
-    if (hy > 0.0) {
-      vec2 drift = vec2(0.45, 0.1) * hy + vec2(sin(uTime * 0.3 + hy), 0.0) * 0.15 * hy;
-      float hd = length(P.xz - S.xz - drift);
-      float w = 0.25 + 0.22 * hy;
-      float dens = exp(-hd * hd / (w * w)) * smoothstep(10.0, 0.0, hy);
-      dens *= 0.4 + 0.9 * fbm(vec2(hd * 2.0, hy * 1.2 - uTime * 0.6), 4);
-      vec3 smoke = mix(vec3(0.55, 0.56, 0.6) * mix(0.15, 1.0, dayAmt), vec3(0.06, 0.06, 0.08), nightAmt);
-      col = mix(col, smoke, clamp(dens * 0.45, 0.0, 0.6));
-    }
-  }
+  col = smokeColumn(ro, rd, t, col, fromHut(vec3(1.4, 5.1, 0.7)), 1.1, 0.2);
   return col;
 }
 

@@ -6,10 +6,12 @@ export default build(`
 #define TREE_DIST 200.0
 #define HAS_WATER 1
 #define WAVE_AMP 0.09
+#define LEAVES 0.0
+#define FISH 0.6
 #define WAVE_DIR vec2(0.35, -1.0)
 
-const vec3 LH = vec3(30.0, 13.0, 85.0);
-const vec3 LAMP = vec3(30.0, 22.85, 85.0);
+const vec3 LH = vec3(24.0, 13.0, 58.0);
+const vec3 LAMP = vec3(24.0, 22.85, 58.0);
 
 float headland(vec2 p) {
   return smoothstep(2.0, 12.0, p.x - 20.0 + fbm(p * 0.04, 4) * 14.0 - max(p.y - 160.0, 0.0) * 0.3 - max(40.0 - p.y, 0.0) * 0.6);
@@ -35,7 +37,7 @@ float forestMask(vec2 p, float g) {
 float sdObj(vec3 p, out float m) {
   m = 0.0;
   vec3 q = p - LH;
-  if (length(q.xz) > 8.0) return length(q.xz) - 7.5;
+  if (length(q.xz) > 8.0 || q.y > 12.0) return max(length(q.xz) - 7.5, q.y - 11.6);
   float best = 1e9;
   float tower = sdCappedCone(q - vec3(0, 4.5, 0), 4.6, 1.6, 1.05);
   if (tower < best) { best = tower; m = 1.0; }
@@ -105,6 +107,6 @@ vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
 
 void sceneCamera(out vec3 ro, out vec3 fw) {
   ro = vec3(0.0, 3.4, 0.0);
-  fw = normalize(vec3(0.2, 0.06, 1.0));
+  fw = normalize(vec3(0.27, 0.1, 1.0));
 }
 `);

@@ -6,6 +6,8 @@ export default build(`
 #define TREE_DIST 200.0
 #define HAS_WATER 0
 #define WAVE_AMP 0.03
+#define BATS 1.0
+#define LEAVES 0.3
 #define WAVE_DIR vec2(0.0)
 
 const vec3 C = vec3(0.0, 15.0, 58.0);
@@ -29,7 +31,7 @@ float forestMask(vec2 p, float g) {
 float sdObj(vec3 p, out float m) {
   m = 0.0;
   vec3 q = p - C;
-  float bound = length(q.xz - vec2(-3.0, 0.0)) - 14.0;
+  float bound = max(length(q.xz - vec2(-3.0, 0.0)) - 14.0, q.y - 21.0);
   if (bound > 1.0) return bound;
   // Bergfried mit Zinnen
   float r = length(q.xz);
@@ -58,11 +60,27 @@ float sdObj(vec3 p, out float m) {
   rubble = min(rubble, sdBox(q - vec3(-2.0, 0.1, 2.6), vec3(0.5, 0.35, 0.4)));
   float d = min(min(keep, wall), min(tower, rubble));
   m = 1.0;
+  // Fahnenmast + flatternde Fahne
+  float pole = sdCapsule(q, vec3(0.0, 16.0, 0.0), vec3(0.0, 20.2, 0.0), 0.06);
+  vec3 fq = q - vec3(0.0, 19.4, 0.0);
+  fq.xz = rot2(-0.35) * fq.xz;
+  float u = clamp(fq.x / 2.0, 0.0, 1.0);
+  fq.z -= sin(fq.x * 3.5 - uTime * 6.0) * 0.18 * u + sin(fq.x * 7.0 - uTime * 9.0) * 0.05 * u;
+  fq.y += u * u * 0.15 * (1.0 - 0.5 * sin(uTime * 2.0));
+  float flag = sdBox(fq - vec3(1.0, 0.0, 0.0), vec3(1.0, 0.5, 0.025));
+  float pf = min(pole, flag * 0.6);
+  if (pf < d * 0.8) { m = pole < flag ? 3.0 : 2.0; return pf; }
   return d * 0.8;
 }
 
 vec3 objAlbedo(float m, vec3 p, vec3 n) {
   vec3 q = p - C;
+  if (m > 2.5) return vec3(0.1, 0.09, 0.08);
+  if (m > 1.5) {
+    // Fahne: tiefrot mit goldenem Streifen
+    float stripe = step(abs(q.y - 19.4), 0.09);
+    return mix(vec3(0.5, 0.08, 0.07), vec3(0.85, 0.65, 0.2), stripe);
+  }
   // Steinquader
   vec2 b = vec2(q.x + q.z, q.y) * vec2(1.4, 2.6);
   b.x += floor(b.y) * 0.5;

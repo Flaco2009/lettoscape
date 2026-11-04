@@ -6,6 +6,9 @@ export default build(`
 #define TREE_DIST 170.0
 #define HAS_WATER 0
 #define WAVE_AMP 0.03
+#define BATS 0.6
+#define BUTTERFLIES 0.7
+#define FLOWERS 0.9
 #define WAVE_DIR vec2(0.0)
 
 const vec3 K = vec3(-0.5, 0.5, 19.0);
@@ -35,7 +38,7 @@ float sdObj(vec3 p, out float m) {
   m = 0.0;
   vec3 q = toK(p);
   float best = 1e9;
-  if (length(q.xz) < 9.0) {
+  if (length(q.xz) < 9.0 && q.y < 9.5) {
     float nave = sdBox(q - vec3(0, 1.7, 0.4), vec3(1.8, 1.7, 3.2));
     if (nave < best) { best = nave; m = 1.0; }
     float roof = sdGable(q - vec3(0, 3.35, 0.4), 2.15, 2.1, 3.45);
@@ -46,7 +49,9 @@ float sdObj(vec3 p, out float m) {
     tower = max(tower, -sdBox(t - vec3(0, 4.55, 0), vec3(1.0, 0.38, 0.45)));
     tower = max(tower, -sdBox(t - vec3(0, 4.55, 0), vec3(0.45, 0.38, 1.0)));
     if (tower < best) { best = tower; m = 1.0; }
-    float bell = sdCappedCone(t - vec3(0, 4.55, 0), 0.25, 0.3, 0.14);
+    vec3 bq = t - vec3(0, 4.85, 0);
+    bq.yz = rot2(sin(uTime * 0.9) * 0.18) * bq.yz;
+    float bell = sdCappedCone(bq + vec3(0, 0.3, 0), 0.25, 0.3, 0.14);
     if (bell < best) { best = bell; m = 4.0; }
     float spire = sdPyramid(t - vec3(0, 5.28, 0), 1.0, 2.5);
     if (spire < best) { best = spire; m = 2.0; }
@@ -57,7 +62,7 @@ float sdObj(vec3 p, out float m) {
     bench = min(bench, sdBox(vec3(q.x - 2.8, q.y - 0.22, abs(q.z + 3.0) - 0.75), vec3(0.2, 0.22, 0.05)));
     if (bench < best) { best = bench; m = 3.0; }
   } else {
-    best = length(q.xz) - 8.5;
+    best = max(length(q.xz) - 8.5, q.y - 9.0);
   }
   return best;
 }

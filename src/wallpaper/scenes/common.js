@@ -215,9 +215,73 @@ vec3 pointGlow(vec3 ro, vec3 rd, float t, vec3 lp, vec3 lc, float size) {
   float h2 = dot(v, v) - along * along;
   return lc * size * size / (h2 + size * size * 0.15) * 0.05;
 }
+
+// ---------- Wind ----------
+const vec2 WIND = vec2(0.94, 0.34);
+// Boeen ziehen als Wellen ueber die Landschaft
+float gustAt(vec2 p) { return fbm(p * 0.05 - WIND * uTime * 0.35, 3); }
+vec2 windSway(vec2 c) {
+  float ph = hash(c) * 6.2832;
+  float gust = gustAt(c);
+  float storm = 1.0 + uRain * 1.5;
+  return WIND * (sin(uTime * 1.4 + ph) * 0.05 + gust * 0.22) * storm;
+}
+
+// Ziehende Wolkenschatten auf dem Boden
+float cloudShadow(vec2 p) {
+  float c = fbm(p * 0.006 + WIND * uTime * 0.025, 4);
+  float amt = clamp(0.25 + uClouds * 1.4, 0.0, 1.0) * (1.0 - overcast) * dayAmt;
+  return 1.0 - smoothstep(0.42, 0.68, c) * 0.6 * amt;
+}
+
+// Rauchsaeule (Kamin, Lagerfeuer). S = Austritt, strength ~ 0..1
+vec3 smokeColumn(vec3 ro, vec3 rd, float t, vec3 col, vec3 S, float strength, float spread) {
+  vec2 rxz = rd.xz;
+  float s = dot(S.xz - ro.xz, rxz) / max(dot(rxz, rxz), 1e-4);
+  if (s <= 0.0 || s >= t) return col;
+  vec3 P = ro + rd * s;
+  float hy = P.y - S.y;
+  if (hy <= 0.0) return col;
+  vec2 drift = WIND * hy * (0.35 + uRain * 0.3) + vec2(sin(uTime * 0.35 + hy * 0.8), cos(uTime * 0.27 + hy)) * 0.12 * hy;
+  float hd = length(P.xz - S.xz - drift);
+  float w = 0.18 + spread * hy;
+  float dens = exp(-hd * hd / (w * w)) * smoothstep(12.0, 0.5, hy) * smoothstep(0.0, 0.4, hy);
+  dens *= 0.35 + 1.0 * fbm(vec2(hd * 2.5 + hy * 0.3, hy * 1.3 - uTime * 0.7), 4);
+  vec3 lit = skyBase(vec3(0.0, 1.0, 0.0)) * 0.9 + lightCol * 0.12;
+  vec3 smoke = mix(vec3(0.62, 0.62, 0.66) * mix(0.12, 1.0, dayAmt), lit, 0.4);
+  // nachts leicht mondhell, damit der Rauch vor dem dunklen Himmel sichtbar bleibt
+  smoke = max(smoke, vec3(0.1, 0.11, 0.15) * nightAmt);
+  // unten warm angestrahlt (Feuer/Fenster)
+  smoke += vec3(0.5, 0.22, 0.06) * smoothstep(2.0, 0.0, hy) * (0.3 + nightAmt) * 0.5;
+  return mix(col, smoke, clamp(dens * strength, 0.0, 0.75));
+}
+
+vec3 flowerColor(float h) {
+  if (h < 0.3) return vec3(0.92, 0.9, 0.84);
+  if (h < 0.55) return vec3(0.95, 0.78, 0.18);
+  if (h < 0.8) return vec3(0.55, 0.36, 0.82);
+  return vec3(0.92, 0.36, 0.42);
+}
 `;
 
 const core = `
+// ---------- Optionale Szenen-Schalter ----------
+#ifndef LEAVES
+#define LEAVES 0.5        // fallende Blaetter (0 = aus)
+#endif
+#ifndef FLOWERS
+#define FLOWERS 0.6       // Blumen auf Wiesen
+#endif
+#ifndef BATS
+#define BATS 0.0          // Fledermaeuse in der Daemmerung/Nacht
+#endif
+#ifndef BUTTERFLIES
+#define BUTTERFLIES 0.0   // Schmetterlinge am Tag
+#endif
+#ifndef FISH
+#define FISH 1.0          // springende Fische (Ringe im Wasser)
+#endif
+
 // ---------- Wald ----------
 float treeH(vec2 p, float g) {
   float m = forestMask(p, g);
@@ -226,12 +290,20 @@ float treeH(vec2 p, float g) {
   vec2 c = floor(p / cs);
   if (hash(c + 7.1) > m * 1.15) return 0.0;
   vec2 ctr = (c + 0.5 + (vec2(hash(c + 1.3), hash(c + 2.7)) - 0.5) * 0.25) * cs;
-  float d = length(p - ctr);
   float th = 3.2 + hash(c + 3.9) * 3.4;
-  float rad = th * 0.2;
-  float k = 1.0 - d / rad;
-  float cone = th * k + 0.05 * th * sin(k * 22.0) * k;
-  return max(0.0, cone);
+  float rad = th * 0.21;
+  // Wind: Spitze schwankt staerker als der Fuss
+  vec2 sway = windSway(ctr);
+  float k0 = 1.0 - length(p - ctr) / rad;
+  vec2 dv = p - ctr - sway * clamp(k0, 0.0, 1.0);
+  // zerzauste Silhouette statt glattem Kegel
+  float a = atan(dv.y, dv.x);
+  rad *= 0.86 + 0.2 * noise(vec2(a * 2.2 + hash(c) * 20.0, th * 3.0));
+  float k = 1.0 - length(dv) / rad;
+  if (k <= 0.0) return 0.0;
+  // Nadel-Struktur: weiche Buckel statt harter Etagen (keine Streifen)
+  float fluff = (noise(dv * 3.0 + c * 7.0) - 0.5) * 0.35 * sqrt(k);
+  return max(0.0, th * k + fluff);
 }
 
 float sceneH(vec2 p, float t, out float g) {
@@ -265,16 +337,27 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, out float m, out float g) {
 }
 
 float softShadow(vec3 ro, vec3 rd) {
-  float res = 1.0, t = 0.15;
+  // Startpunkt leicht verrauscht, damit keine Streifen (Banding) entstehen
+  float res = 1.0, t = 0.3 + 0.3 * hash(ro.xz * 37.0 + fract(uTime));
+  float ph = 1e10;
   for (int i = 0; i < 48; i++) {
     vec3 p = ro + rd * t;
     float om;
-    float h = min(p.y - groundH(p.xz, 4), sdObj(p, om));
-    res = min(res, 10.0 * h / t);
+    float hT = p.y - groundH(p.xz, t < 8.0 ? 8 : 4);
+    float hO = sdObj(p, om);
+    // Objekt-Abstaende >= 0.45 koennen Begrenzungsvolumen sein -> kein Halbschatten
+    float h = hO < 0.45 ? min(hT, hO) : hT;
+    float stepH = min(hT, hO);
+    // verbesserte weiche Schatten (iq)
+    float y = h * h / (2.0 * ph);
+    float d = sqrt(max(h * h - y * y, 0.0));
+    res = min(res, 7.0 * d / max(0.0, t - y));
+    ph = h;
     if (res < 0.01 || p.y > 200.0) break;
-    t += clamp(h * 0.7, 0.08, 20.0);
+    t += clamp(stepH * 0.8, 0.12, 20.0);
   }
-  return clamp(res, 0.0, 1.0);
+  res = clamp(res, 0.0, 1.0);
+  return res * res * (3.0 - 2.0 * res);
 }
 
 vec3 calcNormal(vec3 p, float t) {
@@ -285,7 +368,7 @@ vec3 calcNormal(vec3 p, float t) {
 }
 
 vec3 terrainNormal(vec2 p, float t) {
-  float e = 0.0015 * t + 0.01, g;
+  float e = 0.002 * t + 0.03, g;
   float hx = sceneH(p + vec2(e, 0), t, g) - sceneH(p - vec2(e, 0), t, g);
   float hz = sceneH(p + vec2(0, e), t, g) - sceneH(p - vec2(0, e), t, g);
   return normalize(vec3(-hx, 2.0 * e, -hz));
@@ -304,8 +387,28 @@ vec3 terrainAlbedo(vec3 p, vec3 n, float g, float t) {
   float fm = forestMask(p.xz, g);
   float nv = fbm(p.xz * 0.3, 3);
   vec3 grass = mix(vec3(0.16, 0.2, 0.07), vec3(0.42, 0.36, 0.14), smoothstep(0.35, 0.75, nv));
+  // feine Grasstruktur + helle Boeen, die ueber die Wiese laufen
+  grass *= 0.85 + 0.3 * noise(p.xz * 6.0);
+  float gust = fbm(p.xz * 0.11 - WIND * uTime * 0.9, 3);
+  grass *= 0.8 + 0.45 * smoothstep(0.3, 0.75, gust);
+  float flowerAmt = FLOWERS * (1.0 - uSnow) * smoothstep(50.0, 15.0, t) * mix(0.25, 1.0, dayAmt);
+  if (flowerAmt > 0.01) {
+    vec2 fp = p.xz * 2.2;
+    vec2 ci = floor(fp);
+    float hf = hash(ci + 17.0);
+    float fpatch = smoothstep(0.45, 0.65, fbm(p.xz * 0.08 + 3.0, 3));
+    if (hf > 0.86 - fpatch * 0.12) {
+      vec2 o = fract(fp) - 0.5 - (vec2(hash(ci + 3.0), hash(ci + 5.0)) - 0.5) * 0.5;
+      o += WIND * sin(uTime * 2.0 + hf * 30.0) * 0.06;
+      float dot1 = smoothstep(0.17, 0.07, length(o));
+      grass = mix(grass, flowerColor(hash(ci + 9.0)) * 0.8, dot1 * flowerAmt);
+    }
+  }
   vec3 rock  = mix(vec3(0.27, 0.27, 0.29), vec3(0.4, 0.39, 0.38), nv);
   vec3 treeC = mix(vec3(0.03, 0.08, 0.05), vec3(0.06, 0.13, 0.07), hash(floor(p.xz / 1.8)));
+  // hellere Spitzen, dunkle Tiefe, leichte Farbvariation (Tanne/Fichte)
+  treeC *= 0.75 + 0.6 * smoothstep(0.5, 5.0, tree) + 0.25 * noise(p.xz * 4.0 + p.y * 3.0);
+  treeC = mix(treeC, treeC * vec3(1.15, 1.05, 0.8), hash(floor(p.xz / 1.8) + 4.0) * 0.5);
   float steep = smoothstep(0.82, 0.55, n.y);
   vec3 alb = mix(grass, rock, max(steep, smoothstep(30.0, 55.0, g)));
   alb = mix(alb, treeC * 1.1, fm * smoothstep(TREE_DIST * 0.7, TREE_DIST, t) * 0.85);
@@ -317,6 +420,8 @@ vec3 terrainAlbedo(vec3 p, vec3 n, float g, float t) {
 }
 
 vec3 shade(vec3 p, vec3 rd, float t, float m, float g, bool cheap) {
+  // Treffer exakt auf die Oberflaeche setzen (verhindert Ringe/Selbstschatten)
+  if (m < 0.5) { float gg; p.y = sceneH(p.xz, t, gg); g = gg; }
   vec3 n = m < 0.5 ? terrainNormal(p.xz, t) : objNormal(p, t);
   vec3 alb;
   float ao = 1.0;
@@ -330,10 +435,14 @@ vec3 shade(vec3 p, vec3 rd, float t, float m, float g, bool cheap) {
   }
   float dif = max(dot(n, lightDir), 0.0);
   float sh = 1.0;
-  if (!cheap && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * 0.05, lightDir);
+  if (!cheap && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.05 + 0.002 * t), lightDir);
+  sh *= cloudShadow(p.xz);
   vec3 amb = skyBase(vec3(0.0, 1.0, 0.0)) * (0.4 + 0.6 * n.y) * 0.6;
   amb += skyBase(normalize(vec3(-lightDir.x, 0.1, -lightDir.z))) * 0.15;
   vec3 col = alb * (lightCol * dif * sh + amb * ao + sceneLights(p, n));
+  // weiches Randlicht vom Himmel (laesst Silhouetten "atmen")
+  float rim = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+  col += alb * skyBase(normalize(vec3(rd.x, 0.15, rd.z))) * rim * 0.35 * ao;
   col += uRain * 0.04 * pow(max(dot(reflect(rd, n), lightDir), 0.0), 16.0) * lightCol;
   if (m > 0.5) col += objEmit(m, p, n);
   return col;
@@ -419,6 +528,115 @@ vec3 precipitation(vec2 uv, vec3 col) {
   return col;
 }
 
+// Fallende Blaetter (drei Tiefenebenen)
+vec3 leaves(vec2 uv, vec3 col) {
+  float amt = LEAVES * (1.0 - uSnow) * (1.0 - uRain * 0.6);
+  if (amt < 0.01) return col;
+  for (int l = 0; l < 3; l++) {
+    float fl = float(l);
+    float sc = 3.5 + fl * 3.0;
+    vec2 q = uv * sc;
+    q.y += uTime * (0.22 + fl * 0.05) * sc * 0.12;
+    q.x -= uTime * WIND.x * (0.15 + fl * 0.05) * sc * 0.12;
+    vec2 c = floor(q);
+    float h = hash(c + fl * 31.0);
+    if (h < 1.0 - 0.07 * amt) continue;
+    vec2 f = fract(q) - 0.5;
+    f.x += sin(uTime * (1.2 + h) + h * 40.0) * 0.25;
+    float ang = uTime * (1.5 + h * 2.0) + h * 20.0;
+    vec2 r = rot2(ang) * f;
+    float flip = abs(sin(ang * 0.7));
+    float sz = (0.07 - fl * 0.012);
+    float leaf = smoothstep(sz, sz * 0.4, length(r * vec2(1.0, 2.2 / max(flip, 0.25))));
+    vec3 lc = mix(vec3(0.85, 0.42, 0.1), vec3(0.75, 0.62, 0.15), hash(c + 2.0));
+    lc = mix(lc, vec3(0.55, 0.15, 0.08), step(0.75, hash(c + 4.0)));
+    lc *= mix(0.08, 1.0, dayAmt) * (0.7 + 0.3 * flip) + duskAmt * vec3(0.15, 0.06, 0.0);
+    col = mix(col, lc, leaf * (0.95 - fl * 0.25));
+  }
+  return col;
+}
+
+// Schwebende Staub-/Pollenteilchen im Sonnenlicht
+vec3 motes(vec2 uv, vec3 rd, vec3 col) {
+  float amt = dayAmt * (1.0 - overcast) * (1.0 - uRain);
+  if (amt < 0.01) return col;
+  float toward = 0.35 + 1.6 * pow(max(dot(rd, sunDir), 0.0), 4.0);
+  for (int l = 0; l < 2; l++) {
+    float fl = float(l);
+    float sc = 22.0 + fl * 18.0;
+    vec2 q = uv * sc + vec2(uTime * 0.12, sin(uTime * 0.1 + fl) * 0.4) * (1.0 + fl);
+    vec2 c = floor(q);
+    float h = hash(c + fl * 11.0);
+    if (h < 0.93) continue;
+    vec2 o = (vec2(hash(c + 1.0), hash(c + 2.0)) - 0.5) * 0.6 + 0.08 * vec2(sin(uTime + h * 50.0), cos(uTime * 0.8 + h * 30.0));
+    float d = length(fract(q) - 0.5 - o);
+    float tw = 0.5 + 0.5 * sin(uTime * 2.0 + h * 90.0);
+    col += vec3(1.0, 0.95, 0.8) * smoothstep(0.06, 0.0, d) * tw * toward * amt * 0.25;
+  }
+  return col;
+}
+
+// Sternschnuppen (nur im Himmel)
+vec3 shootingStars(vec2 uv, vec3 col, float skyMask) {
+  float amt = nightAmt * (1.0 - overcast) * skyMask;
+  if (amt < 0.01) return col;
+  for (int i = 0; i < 2; i++) {
+    float P = 17.0 + float(i) * 11.0;
+    float id = floor((uTime + float(i) * 7.0) / P);
+    float ph = fract((uTime + float(i) * 7.0) / P);
+    float dur = 0.06;
+    if (ph > dur) continue;
+    float k = ph / dur;
+    vec2 a = vec2(hash1(id * 3.1) * 1.6 - 0.8, 0.22 + hash1(id * 5.7) * 0.22);
+    vec2 dir = normalize(vec2(hash1(id * 9.3) > 0.5 ? 1.0 : -1.0, -0.45 - hash1(id) * 0.3));
+    vec2 head = a + dir * k * 0.45;
+    vec2 v = uv - head;
+    float along = dot(v, -dir);
+    float perp = length(v + dir * along);
+    float tail = smoothstep(0.16, 0.0, along) * step(0.0, along);
+    float line = smoothstep(0.0025, 0.0, perp) * tail * sin(k * 3.1416);
+    col += vec3(0.9, 0.93, 1.0) * line * amt * 1.5;
+  }
+  return col;
+}
+
+// Fledermaeuse in der Daemmerung und nachts
+vec3 bats(vec2 uv, vec3 col) {
+  float amt = BATS * max(duskAmt, nightAmt * 0.8) * (1.0 - uRain);
+  if (amt < 0.01) return col;
+  float acc = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    float tt = uTime * (0.25 + hash1(fi) * 0.15) + fi * 13.0;
+    vec2 c = vec2(sin(tt * 0.9 + fi) * 0.7 + sin(tt * 2.3) * 0.1, 0.18 + 0.12 * sin(tt * 0.7 + fi * 2.0) + 0.04 * sin(tt * 3.1));
+    vec2 d = uv - c;
+    float flap = sin(uTime * 16.0 + fi * 2.0);
+    vec2 w = vec2(abs(d.x), d.y - flap * 0.006 * (abs(d.x) * 90.0));
+    float body = smoothstep(0.004, 0.0015, length(d * vec2(1.0, 0.7)));
+    float wing = smoothstep(0.0025, 0.0, abs(w.y - w.x * 0.35 + 0.002)) * smoothstep(0.016, 0.01, w.x);
+    acc = max(acc, max(body, wing));
+  }
+  return mix(col, vec3(0.01, 0.01, 0.02), acc * amt);
+}
+
+// Schmetterlinge am Tag
+vec3 butterflies(vec2 uv, vec3 col) {
+  float amt = BUTTERFLIES * dayAmt * (1.0 - uRain) * (1.0 - uSnow);
+  if (amt < 0.01) return col;
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float tt = uTime * (0.3 + hash1(fi + 3.0) * 0.2) + fi * 9.0;
+    vec2 c = vec2(sin(tt * 0.7 + fi * 1.7) * 0.75, -0.3 + 0.12 * sin(tt * 1.3 + fi) + 0.03 * sin(tt * 5.0));
+    vec2 d = uv - c;
+    float flap = 0.35 + 0.65 * abs(sin(uTime * 11.0 + fi * 3.0));
+    vec2 w = vec2(abs(d.x) / flap, d.y);
+    float wings = smoothstep(0.009, 0.004, length((w - vec2(0.006, 0.002)) * vec2(1.0, 0.85)));
+    vec3 bc = flowerColor(hash1(fi + 1.0));
+    col = mix(col, bc * mix(0.2, 1.0, dayAmt), wings * amt);
+  }
+  return col;
+}
+
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 
 // ---------- Main ----------
@@ -428,6 +646,9 @@ void main() {
 
   vec3 ro, fw;
   sceneCamera(ro, fw);
+  // ganz leichtes "Atmen" der Kamera, damit das Bild nie eingefroren wirkt
+  ro += vec3(sin(uTime * 0.11) * 0.06, sin(uTime * 0.17) * 0.035, sin(uTime * 0.07) * 0.05);
+  fw = normalize(fw + vec3(sin(uTime * 0.09) * 0.004, sin(uTime * 0.13) * 0.003, 0.0));
   vec3 rt0 = normalize(cross(vec3(0, 1, 0), fw));
   ro += rt0 * uMouse.x * 0.35 + vec3(0.0, uMouse.y * 0.1, 0.0);
   fw = normalize(fw + rt0 * uMouse.x * 0.03 + vec3(0.0, uMouse.y * 0.015, 0.0));
@@ -466,6 +687,19 @@ void main() {
       n.xz += normalize(rf + 1e-4) * ring * 0.15 * uRain;
       n = normalize(n);
     }
+    // springende Fische: ab und zu Ringe auf dem Wasser
+    if (FISH > 0.0) {
+      vec2 fc = floor(p.xz / 9.0);
+      float fh = hash(fc + 41.0);
+      if (fh > 0.55) {
+        vec2 ctr = (fc + 0.2 + 0.6 * vec2(hash(fc + 2.0), hash(fc + 7.0))) * 9.0;
+        float ph = fract(uTime * (0.05 + fh * 0.04) + fh * 10.0);
+        float dd = length(p.xz - ctr);
+        float ring = sin((dd - ph * 4.0) * 9.0) * smoothstep(ph * 4.0 + 0.6, ph * 4.0, dd) * smoothstep(ph * 4.0 - 1.5, ph * 4.0, dd) * (1.0 - ph);
+        n.xz += normalize(p.xz - ctr + 1e-4) * ring * 0.12 * FISH;
+        n = normalize(n);
+      }
+    }
     vec3 rr = reflect(rd, n);
     rr.y = abs(rr.y);
     float m2, g2;
@@ -495,8 +729,14 @@ void main() {
 
   vec2 suv = gl_FragCoord.xy / uRes - 0.5;
   suv.x *= uRes.x / uRes.y;
+  float skyMask = tHit >= TMAX ? 1.0 : 0.0;
+  col = shootingStars(suv, col, skyMask);
   col = birds(suv, col);
+  col = bats(suv, col);
+  col = motes(suv, rd, col);
+  col = butterflies(suv, col);
   col = fireflies(suv, col);
+  col = leaves(suv, col);
   col = precipitation(suv, col);
 
   col *= uBright * 1.15;
@@ -504,7 +744,7 @@ void main() {
   col = pow(col, vec3(1.0 / 2.2));
   col = mix(col, col * col * (3.0 - 2.0 * col), 0.35);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
-  col = mix(vec3(lum), col, 1.12);
+  col = mix(vec3(lum), col, 1.18);
   vec2 q = gl_FragCoord.xy / uRes;
   col *= 0.55 + 0.45 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.18);
   col += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * 0.012;

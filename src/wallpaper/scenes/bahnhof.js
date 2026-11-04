@@ -6,6 +6,8 @@ export default build(`
 #define TREE_DIST 180.0
 #define HAS_WATER 0
 #define WAVE_AMP 0.03
+#define BATS 0.5
+#define LEAVES 0.7
 #define WAVE_DIR vec2(0.0)
 
 const vec3 ST = vec3(5.2, 0.9, 20.0);  // Stationshaus (Boden = Bahnsteig)
@@ -53,7 +55,7 @@ float sdObj(vec3 p, out float m) {
   if (plat < best) { best = plat; m = 3.0; }
   // Stationshaus
   vec3 q = p - ST;
-  if (length(q.xz) < 8.0) {
+  if (length(q.xz) < 8.0 && q.y < 5.0) {
     float house = sdBox(q - vec3(0, 1.6, 0), vec3(1.4, 1.6, 4.0));
     if (house < best) { best = house; m = 4.0; }
     float roof = sdGable(q - vec3(0, 3.2, 0), 1.9, 1.2, 4.4);
@@ -65,7 +67,7 @@ float sdObj(vec3 p, out float m) {
     float sign = sdBox(q - vec3(-1.45, 2.35, 0), vec3(0.04, 0.25, 1.1));
     if (sign < best) { best = sign; m = 6.0; }
   } else {
-    best = min(best, length(q.xz) - 7.5);
+    best = min(best, max(length(q.xz) - 7.5, q.y - 4.6));
   }
   // Laternen
   float g1, g2;

@@ -6,6 +6,8 @@ export default build(`
 #define TREE_DIST 170.0
 #define HAS_WATER 1
 #define WAVE_AMP 0.06
+#define LEAVES 0.6
+#define BUTTERFLIES 0.4
 #define WAVE_DIR vec2(0.0, -1.6)
 
 const vec3 M = vec3(7.4, 1.0, 17.0);   // Muehlenhaus
@@ -51,7 +53,7 @@ float sdWheel(vec3 p) {
 float sdObj(vec3 p, out float m) {
   m = 0.0;
   vec3 q = p - M;
-  if (length(q.xz) > 7.0) return length(q.xz) - 6.5;
+  if (length(q.xz) > 7.0 || q.y > 7.0) return max(length(q.xz) - 6.5, q.y - 6.5);
   float best = 1e9;
   float stone = sdBox(q - vec3(0, 1.1, 0), vec3(1.8, 1.25, 2.4));
   if (stone < best) { best = stone; m = 1.0; }
