@@ -18,5 +18,6 @@
   "allDisplays": true,
   "showInTaskbar": true,
   "cornerMenu": true,
-  "panelPinned": false
+  "panelPinned": false,
+  "taskbarSync": true
 }

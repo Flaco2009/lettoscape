@@ -76,11 +76,17 @@ function attach(win, rect) {
   return true;
 }
 
-/** Stellt das normale Windows-Hintergrundbild wieder her (beim Beenden). */
-function restoreWallpaper() {
+/** Aktueller System-Wallpaper-Pfad. */
+function getWallpaper() {
   const buf = Buffer.alloc(520 * 2);
   SystemParametersInfoW(0x0073, 520, buf, 0); // SPI_GETDESKWALLPAPER
-  SystemParametersInfoW(0x0014, 0, buf, 0x1 | 0x2); // SPI_SETDESKWALLPAPER
+  return buf.toString('utf16le').split('\0')[0];
+}
+
+/** Setzt das System-Wallpaper (die Taskleiste faerbt sich nach diesem Bild). */
+function setWallpaper(file) {
+  const buf = Buffer.from(file + '\0', 'utf16le');
+  return SystemParametersInfoW(0x0014, 0, buf, 0x1 | 0x2); // SPI_SETDESKWALLPAPER
 }
 
 const DESKTOP_CLASSES = new Set(['Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', '']);
@@ -100,4 +106,4 @@ function isForegroundFullscreen(displaysPhysical) {
   );
 }
 
-module.exports = { attach, restoreWallpaper, isForegroundFullscreen, hwndOf };
+module.exports = { attach, getWallpaper, setWallpaper, isForegroundFullscreen, hwndOf };

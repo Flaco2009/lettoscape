@@ -118,6 +118,48 @@ function broadcast(channel, data) {
   if (panel && !panel.isDestroyed()) panel.webContents.send(channel, data);
 }
 
+// ---------- Taskleisten-Hintergrund ----------
+// Die Win11-Taskleiste ist halbtransparent und nimmt ihre Farbe vom echten System-Wallpaper,
+// nicht vom Wallpaper-Fenster. Deshalb wird regelmaessig ein Standbild der Szene als
+// System-Wallpaper gesetzt; das Original wird beim Beenden wiederhergestellt.
+const origWallFile = () => path.join(app.getPath('userData'), 'original-wallpaper.txt');
+const snapFile = () => path.join(app.getPath('userData'), 'scene-snapshot.png');
+let snapTimer = null;
+
+async function updateTaskbarSnapshot() {
+  if (!isWin || !settings.taskbarSync) return;
+  const w = wallpapers.get(screen.getPrimaryDisplay().id);
+  if (!w || w.isDestroyed()) return;
+  try {
+    const img = await w.webContents.capturePage();
+    if (img.isEmpty()) return;
+    if (!fs.existsSync(origWallFile())) {
+      const cur = desktop.getWallpaper();
+      if (cur && cur !== snapFile()) fs.writeFileSync(origWallFile(), cur);
+    }
+    fs.writeFileSync(snapFile(), img.toPNG());
+    desktop.setWallpaper(snapFile());
+  } catch (e) { console.warn('Taskleisten-Sync fehlgeschlagen:', e.message); }
+}
+
+function restoreSystemWallpaper() {
+  try {
+    if (fs.existsSync(origWallFile())) {
+      const orig = fs.readFileSync(origWallFile(), 'utf8').trim();
+      if (orig) desktop.setWallpaper(orig);
+      fs.unlinkSync(origWallFile());
+    }
+  } catch {}
+}
+
+function startTaskbarSync() {
+  clearInterval(snapTimer);
+  if (!isWin) return;
+  if (!settings.taskbarSync) { restoreSystemWallpaper(); return; }
+  setTimeout(updateTaskbarSnapshot, 6000);
+  snapTimer = setInterval(updateTaskbarSnapshot, 5 * 60 * 1000);
+}
+
 // ---------- Maus-Parallax + Vollbild-Pause ----------
 let cursorTimer = null, pauseTimer = null, paused = false;
 
@@ -304,6 +346,7 @@ function updateSettings(patch) {
       if (!open) { if (settings.showInTaskbar) panel.minimize(); else panel.hide(); }
     }
   }
+  if ('taskbarSync' in patch && patch.taskbarSync !== before.taskbarSync) startTaskbarSync();
   broadcast('settings', settings);
   return settings;
 }
@@ -324,6 +367,7 @@ app.whenReady().then(() => {
   createTray();
   createCorner();
   startLoops();
+  startTaskbarSync();
 
   screen.on('display-added', rebuildWallpapers);
   screen.on('display-removed', rebuildWallpapers);
@@ -345,5 +389,6 @@ app.on('before-quit', () => {
   clearInterval(cursorTimer);
   clearInterval(pauseTimer);
   for (const w of wallpapers.values()) w.destroy();
-  if (isWin) { try { desktop.restoreWallpaper(); } catch {} }
+  clearInterval(snapTimer);
+  if (isWin) restoreSystemWallpaper();
 });
