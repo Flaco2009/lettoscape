@@ -8,7 +8,10 @@ Echte Tag/Nacht-Zeit, Wetter, Nebel, Sterne, Glühwürmchen, Ambient-Sound, alle
 ## Features
 
 - **Live-Wallpaper** hinter den Desktop-Icons (Windows 10/11, inkl. 24H2)
-- **Tray-Icon** unten in der Taskleiste: Klick öffnet das Einstellungs-Panel
+- **Läuft wie eine normale App**: Icon in der Taskleiste, per Rechtsklick → *An Taskleiste anheften*
+- **☰-Ecke unten links**: beim Drüberfahren erscheinen drei Striche, Klick öffnet das Panel
+- **Pin-Knopf** im Panel: angepinnt bleibt es offen und im Vordergrund
+- **Tray-Icon** zusätzlich im Infobereich
 - **Autostart** mit Windows
 - **Tag/Nacht** nach echter Uhrzeit oder fest eingestellt
 - **Wetter**: Klar, Bewölkt, Regen, Schnee, Nebel (weiche Übergänge)

@@ -15,5 +15,8 @@
   "volume": 0.5,
   "autostart": true,
   "pauseOnFullscreen": true,
-  "allDisplays": true
+  "allDisplays": true,
+  "showInTaskbar": true,
+  "cornerMenu": true,
+  "panelPinned": false
 }

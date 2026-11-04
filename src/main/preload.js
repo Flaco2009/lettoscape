@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('lettoscape', {
   setSettings: (patch) => ipcRenderer.invoke('set-settings', patch),
   resetSettings: () => ipcRenderer.invoke('reset-settings'),
   hidePanel: () => ipcRenderer.send('hide-panel'),
+  openPanel: (anchor) => ipcRenderer.send('open-panel', anchor),
   quit: () => ipcRenderer.send('quit'),
 });

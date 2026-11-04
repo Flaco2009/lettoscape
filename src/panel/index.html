@@ -15,7 +15,12 @@
         <p class="sub" id="status">Live-Wallpaper</p>
       </div>
     </div>
-    <button class="icon-btn" id="close" title="Schliessen" aria-label="Schliessen">✕</button>
+    <div class="actions">
+      <button class="icon-btn" id="pin" title="Anpinnen: Panel bleibt offen" aria-label="Panel anpinnen" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M14.5 3.5l6 6-2.2.6-3.6 3.6.4 4.1-1.6 1.6-3.7-3.7L5 20.5 3.5 19l4.8-4.8-3.7-3.7 1.6-1.6 4.1.4 3.6-3.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" id="close" title="Schliessen" aria-label="Schliessen">✕</button>
+    </div>
   </header>
 
   <main>
@@ -82,6 +87,9 @@
       <h2>System</h2>
       <label class="toggle"><span>Mit Windows starten</span><input type="checkbox" data-key="autostart"><i></i></label>
       <label class="toggle"><span>Alle Bildschirme</span><input type="checkbox" data-key="allDisplays"><i></i></label>
+      <label class="toggle"><span>In Taskleiste anzeigen</span><input type="checkbox" data-key="showInTaskbar"><i></i></label>
+      <label class="toggle"><span>Menü-Ecke unten links (☰)</span><input type="checkbox" data-key="cornerMenu"><i></i></label>
+      <p class="hint">Tipp: Rechtsklick auf das Taskleisten-Icon → „An Taskleiste anheften“.</p>
     </section>
   </main>
 

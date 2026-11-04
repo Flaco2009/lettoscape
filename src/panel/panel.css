@@ -172,3 +172,10 @@ footer {
 .ver { color: #6f6256; font-size: 11px; }
 
 button:focus-visible, input:focus-visible + i { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+.actions { display: flex; gap: 4px; -webkit-app-region: no-drag; }
+#pin svg { transform: rotate(0deg); transition: transform 0.2s; }
+#pin.on { color: var(--ember); background: rgba(240, 160, 75, 0.12); }
+#pin.on svg { transform: rotate(-35deg); }
+#pin.on svg path { fill: currentColor; fill-opacity: 0.25; }
+.hint { margin: 6px 0 2px; color: var(--muted); font-size: 11.5px; }

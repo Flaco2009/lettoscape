@@ -87,6 +87,10 @@
     });
     document.querySelectorAll('.toggle input').forEach((inp) => { inp.checked = !!s[inp.dataset.key]; });
     document.getElementById('hourRow').classList.toggle('disabled', s.timeMode !== 'fixed');
+    const pin = document.getElementById('pin');
+    pin.classList.toggle('on', !!s.panelPinned);
+    pin.setAttribute('aria-pressed', String(!!s.panelPinned));
+    pin.title = s.panelPinned ? 'Angepinnt: bleibt offen (Klick zum Lösen)' : 'Anpinnen: Panel bleibt offen';
     const sc = scenes.find((x) => x.id === s.scene);
     document.getElementById('status').textContent = (sc ? sc.name : '') + ' · ' + (s.timeMode === 'real' ? 'echte Uhrzeit' : fmt.clock(s.hour));
   }
@@ -107,6 +111,7 @@
   api.onSettings((ns) => { s = ns; render(); });
 
   document.getElementById('close').addEventListener('click', () => api.hidePanel());
+  document.getElementById('pin').addEventListener('click', () => set({ panelPinned: !s.panelPinned }));
   document.getElementById('quit').addEventListener('click', () => api.quit());
   document.getElementById('reset').addEventListener('click', async () => { s = await api.resetSettings(); render(); });
   document.getElementById('ver').textContent = 'v' + version;
@@ -122,7 +127,7 @@
     const defaults = {
       scene: 'bergsee', timeMode: 'real', hour: 20, weather: 'clear', fog: 0.45, clouds: 0.35, brightness: 1,
       speed: 1, fps: 30, renderScale: 0.75, quality: 'high', parallax: true, sound: false, volume: 0.5,
-      autostart: true, pauseOnFullscreen: true, allDisplays: true,
+      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false,
     };
     let st = { ...defaults };
     const names = ['Bergsee', 'Camping-Platz', 'Feuerwachturm', 'Verlassenes Schloss', 'Waldlichtung', 'Jägerhütte', 'Alte Mühle am Bach', 'Verlassener Bahnhof', 'Waldrand-Kapelle', 'Leuchtturm an der Küste'];

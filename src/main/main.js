@@ -11,6 +11,7 @@ const isWin = process.platform === 'win32';
 const isLinux = process.platform === 'linux';
 const desktop = isWin ? require('./desktop-win') : null;
 
+if (isWin) app.setAppUserModelId('ch.flaco2009.lettoscape'); // noetig zum Anheften an die Taskleiste
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -145,28 +146,32 @@ function startLoops() {
     if (p !== paused) {
       paused = p;
       for (const w of wallpapers.values()) if (!w.isDestroyed()) w.webContents.send('pause', paused);
+      if (corner && !corner.isDestroyed()) { if (paused) corner.hide(); else corner.showInactive(); }
     }
   }, 1500);
 }
 
 // ---------- Panel ----------
+// Das Panel ist ein normales App-Fenster: es erscheint in der Taskleiste und kann dort
+// angeheftet werden. "Schliessen" minimiert es nur (oder versteckt es, wenn die
+// Taskleisten-Anzeige aus ist). Mit dem Pin bleibt es offen und immer im Vordergrund.
 let panel = null;
+let panelPlaced = false;
+let lastAutoClose = 0;
+let quitting = false;
 
-function togglePanel() {
-  if (panel && !panel.isDestroyed()) {
-    if (panel.isVisible()) panel.hide();
-    else showPanel();
-    return;
-  }
+function createPanel(showAfter, anchor) {
   panel = new BrowserWindow({
     width: 400,
     height: 680,
     show: false,
     frame: false,
     resizable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    transparent: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Lettoscape',
+    skipTaskbar: !settings.showInTaskbar,
+    alwaysOnTop: !!settings.panelPinned,
     backgroundColor: '#14110f',
     icon: iconPath(),
     webPreferences: {
@@ -176,17 +181,87 @@ function togglePanel() {
     },
   });
   panel.loadFile(path.join(__dirname, '..', 'panel', 'index.html'));
-  panel.once('ready-to-show', showPanel);
-  panel.on('blur', () => { if (!panel.webContents.isDevToolsOpened()) panel.hide(); });
+  panel.once('ready-to-show', () => {
+    if (showAfter) showPanel(anchor);
+    else if (settings.showInTaskbar) { placePanel('right'); panel.minimize(); }
+  });
+  panel.on('blur', () => {
+    if (settings.panelPinned || panel.webContents.isDevToolsOpened()) return;
+    if (!panel.isVisible() || panel.isMinimized()) return;
+    lastAutoClose = Date.now();
+    closePanel();
+  });
+  panel.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    closePanel();
+  });
 }
 
-function showPanel() {
-  // unten rechts ueber der Taskleiste platzieren (Linux: Ecke des Arbeitsbereichs)
+function placePanel(side) {
   const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const [w, h] = panel.getSize();
-  panel.setPosition(wa.x + wa.width - w - 12, wa.y + wa.height - h - 12);
+  const x = side === 'left' ? wa.x + 12 : wa.x + wa.width - w - 12;
+  panel.setPosition(Math.round(x), Math.round(wa.y + wa.height - h - 12));
+  panelPlaced = true;
+}
+
+function showPanel(anchor) {
+  if (!panel || panel.isDestroyed()) return createPanel(true, anchor);
+  const wasOpen = panel.isVisible() && !panel.isMinimized();
+  // Angepinnt und offen: Position behalten (man kann es frei verschieben)
+  if (!wasOpen && (anchor || !panelPlaced || !settings.panelPinned)) placePanel(anchor || 'right');
+  if (panel.isMinimized()) panel.restore();
   panel.show();
   panel.focus();
+}
+
+function closePanel() {
+  if (!panel || panel.isDestroyed()) return;
+  if (settings.showInTaskbar) panel.minimize();
+  else panel.hide();
+}
+
+function togglePanel(anchor) {
+  if (!panel || panel.isDestroyed()) return createPanel(true, anchor);
+  const open = panel.isVisible() && !panel.isMinimized();
+  // Klick auf Tray/Ecke schliesst das Panel per Blur schon - nicht gleich wieder oeffnen
+  if (!open && Date.now() - lastAutoClose < 300) return;
+  if (open) closePanel();
+  else showPanel(anchor);
+}
+
+// ---------- Menue-Ecke unten links (drei Striche beim Drueberfahren) ----------
+let corner = null;
+
+function createCorner() {
+  if (corner && !corner.isDestroyed()) corner.destroy();
+  corner = null;
+  if (!settings.cornerMenu) return;
+  const wa = screen.getPrimaryDisplay().workArea;
+  const size = 56;
+  corner = new BrowserWindow({
+    x: wa.x, y: wa.y + wa.height - size, width: size, height: size,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+  corner.setAlwaysOnTop(true, 'floating');
+  corner.loadFile(path.join(__dirname, '..', 'corner', 'index.html'));
+  corner.once('ready-to-show', () => { if (!paused) corner.showInactive(); });
+  corner.on('closed', () => { corner = null; });
 }
 
 // ---------- Tray ----------
@@ -200,7 +275,7 @@ function createTray() {
   tray = new Tray(img.isEmpty() ? nativeImage.createFromPath(iconPath()) : img);
   tray.setToolTip('Lettoscape');
   const menu = Menu.buildFromTemplate([
-    { label: 'Einstellungen öffnen', click: togglePanel },
+    { label: 'Einstellungen öffnen', click: () => showPanel() },
     { type: 'separator' },
     ...SCENES.filter((s) => s.ready).map((s) => ({
       label: s.name, type: 'radio', checked: settings.scene === s.id,
@@ -210,7 +285,7 @@ function createTray() {
     { label: 'Beenden', click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
-  tray.on('click', togglePanel);
+  tray.on('click', () => togglePanel());
 }
 
 // ---------- Einstellungen aendern ----------
@@ -220,6 +295,15 @@ function updateSettings(patch) {
   saveSettings();
   if ('autostart' in patch && patch.autostart !== before.autostart) applyAutostart(settings.autostart);
   if ('allDisplays' in patch && patch.allDisplays !== before.allDisplays) rebuildWallpapers();
+  if ('cornerMenu' in patch && patch.cornerMenu !== before.cornerMenu) createCorner();
+  if (panel && !panel.isDestroyed()) {
+    if ('panelPinned' in patch) panel.setAlwaysOnTop(!!settings.panelPinned);
+    if ('showInTaskbar' in patch && patch.showInTaskbar !== before.showInTaskbar) {
+      panel.setSkipTaskbar(!settings.showInTaskbar);
+      const open = panel.isVisible() && !panel.isMinimized();
+      if (!open) { if (settings.showInTaskbar) panel.minimize(); else panel.hide(); }
+    }
+  }
   broadcast('settings', settings);
   return settings;
 }
@@ -228,7 +312,8 @@ ipcMain.handle('get-settings', () => ({ settings, scenes: SCENES, version: app.g
 ipcMain.handle('set-settings', (_e, patch) => updateSettings(patch));
 ipcMain.handle('reset-settings', () => updateSettings({ ...DEFAULTS }));
 ipcMain.on('wallpaper-ready', (e) => e.sender.send('settings', settings));
-ipcMain.on('hide-panel', () => panel && panel.hide());
+ipcMain.on('hide-panel', () => closePanel());
+ipcMain.on('open-panel', (_e, anchor) => togglePanel(anchor));
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Start ----------
@@ -237,23 +322,26 @@ app.whenReady().then(() => {
   applyAutostart(settings.autostart);
   rebuildWallpapers();
   createTray();
+  createCorner();
   startLoops();
 
   screen.on('display-added', rebuildWallpapers);
   screen.on('display-removed', rebuildWallpapers);
   screen.on('display-metrics-changed', rebuildWallpapers);
+  for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, createCorner);
   // Nach Standby/Explorer-Neustart neu einhaengen
   powerMonitor.on('resume', () => setTimeout(rebuildWallpapers, 2000));
 
-  if (!process.argv.includes('--hidden') && !fs.existsSync(path.join(app.getPath('userData'), '.welcomed'))) {
-    fs.writeFileSync(path.join(app.getPath('userData'), '.welcomed'), '1');
-    togglePanel();
-  }
+  // Beim normalen Start (z.B. Klick auf das angeheftete Icon) Panel zeigen,
+  // beim Autostart nur still in die Taskleiste legen.
+  const hidden = process.argv.includes('--hidden');
+  createPanel(!hidden);
 });
 
-app.on('second-instance', togglePanel);
+app.on('second-instance', () => showPanel());
 app.on('window-all-closed', (e) => e.preventDefault());
 app.on('before-quit', () => {
+  quitting = true;
   clearInterval(cursorTimer);
   clearInterval(pauseTimer);
   for (const w of wallpapers.values()) w.destroy();
