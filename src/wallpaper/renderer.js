@@ -48,34 +48,53 @@ function fail(msg) {
   console.error(msg);
 }
 
-function compile(type, src) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
-  return s;
+// Shader werden asynchron kompiliert (KHR_parallel_shader_compile): waehrend die neue Szene
+// kompiliert, laeuft die alte weiter und die Oberflaeche (Panel) friert nicht ein.
+const parallel = gl && gl.getExtension('KHR_parallel_shader_compile');
+let pending = null; // { scene, p, vs, fs }
+
+function finishLoad(job) {
+  const { scene, p, vs, fs } = job;
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    const log = gl.getProgramInfoLog(p) || gl.getShaderInfoLog(fs) || gl.getShaderInfoLog(vs);
+    gl.deleteProgram(p);
+    fail('Shader-Fehler: ' + log);
+    return;
+  }
+  if (prog) gl.deleteProgram(prog);
+  prog = p;
+  currentScene = scene;
+  uni = {};
+  for (const n of ['uRes', 'uTime', 'uHour', 'uRain', 'uSnow', 'uFog', 'uClouds', 'uBright', 'uMouse', 'uQuality']) {
+    uni[n] = gl.getUniformLocation(prog, n);
+  }
+}
+
+function pollPending() {
+  if (!pending) return;
+  if (parallel && !gl.getProgramParameter(pending.p, parallel.COMPLETION_STATUS_KHR)) return;
+  const job = pending;
+  pending = null;
+  finishLoad(job);
 }
 
 function loadScene(id) {
   const scene = scenes[id] || scenes.bergsee;
-  if (currentScene === scene) return;
-  try {
-    const p = gl.createProgram();
-    gl.attachShader(p, compile(gl.VERTEX_SHADER, vsSrc));
-    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, scene.shader));
-    gl.bindAttribLocation(p, 0, 'aPos');
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-    if (prog) gl.deleteProgram(prog);
-    prog = p;
-    currentScene = scene;
-    uni = {};
-    for (const n of ['uRes', 'uTime', 'uHour', 'uRain', 'uSnow', 'uFog', 'uClouds', 'uBright', 'uMouse', 'uQuality']) {
-      uni[n] = gl.getUniformLocation(prog, n);
-    }
-  } catch (e) {
-    fail('Shader-Fehler: ' + e.message);
-  }
+  if (currentScene === scene || (pending && pending.scene === scene)) return;
+  if (pending) gl.deleteProgram(pending.p);
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs, vsSrc);
+  gl.compileShader(vs);
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fs, scene.shader);
+  gl.compileShader(fs);
+  const p = gl.createProgram();
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.bindAttribLocation(p, 0, 'aPos');
+  gl.linkProgram(p);
+  pending = { scene, p, vs, fs };
+  if (!parallel) pollPending(); // ohne Extension: synchron wie bisher
 }
 
 // Vollbild-Dreieck
@@ -124,6 +143,7 @@ cur.hour = targetHour();
 
 function frame(now) {
   requestAnimationFrame(frame);
+  pollPending();
   if (paused) { last = now; return; }
   const minDt = 1000 / Math.max(5, settings.fps);
   if (now - lastDraw < minDt - 1) return;
