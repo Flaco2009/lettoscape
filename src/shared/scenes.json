@@ -1,12 +1,12 @@
 [
   { "id": "bergsee",    "name": "Bergsee",                   "ready": true  },
-  { "id": "camping",    "name": "Camping-Platz",             "ready": false },
-  { "id": "firewatch",  "name": "Feuerwachturm",             "ready": false },
-  { "id": "schloss",    "name": "Verlassenes Schloss",       "ready": false },
-  { "id": "lichtung",   "name": "Waldlichtung",              "ready": false },
-  { "id": "jaegerhuette","name": "Jägerhütte",               "ready": false },
-  { "id": "muehle",     "name": "Alte Mühle am Bach",        "ready": false },
-  { "id": "bahnhof",    "name": "Verlassener Bahnhof",       "ready": false },
-  { "id": "kapelle",    "name": "Waldrand-Kapelle",          "ready": false },
-  { "id": "leuchtturm", "name": "Leuchtturm an der Küste",   "ready": false }
+  { "id": "camping",    "name": "Camping-Platz",             "ready": true  },
+  { "id": "firewatch",  "name": "Feuerwachturm",             "ready": true  },
+  { "id": "schloss",    "name": "Verlassenes Schloss",       "ready": true  },
+  { "id": "lichtung",   "name": "Waldlichtung",              "ready": true  },
+  { "id": "jaegerhuette","name": "Jägerhütte",               "ready": true  },
+  { "id": "muehle",     "name": "Alte Mühle am Bach",        "ready": true  },
+  { "id": "bahnhof",    "name": "Verlassener Bahnhof",       "ready": true  },
+  { "id": "kapelle",    "name": "Waldrand-Kapelle",          "ready": true  },
+  { "id": "leuchtturm", "name": "Leuchtturm an der Küste",   "ready": true  }
 ]

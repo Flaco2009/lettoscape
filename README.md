@@ -25,15 +25,15 @@ Echte Tag/Nacht-Zeit, Wetter, Nebel, Sterne, Glühwürmchen, Ambient-Sound, alle
 | Szene | Status |
 |---|---|
 | Bergsee | ✅ |
-| Camping-Platz | 🔜 |
-| Feuerwachturm | 🔜 |
-| Verlassenes Schloss | 🔜 |
-| Waldlichtung | 🔜 |
-| Jägerhütte | 🔜 |
-| Alte Mühle am Bach | 🔜 |
-| Verlassener Bahnhof | 🔜 |
-| Waldrand-Kapelle | 🔜 |
-| Leuchtturm an der Küste | 🔜 |
+| Camping-Platz | ✅ (Rohversion) |
+| Feuerwachturm | ✅ (Rohversion) |
+| Verlassenes Schloss | ✅ (Rohversion) |
+| Waldlichtung | ✅ (Rohversion) |
+| Jägerhütte | ✅ (Rohversion) |
+| Alte Mühle am Bach | ✅ (Rohversion) |
+| Verlassener Bahnhof | ✅ (Rohversion) |
+| Waldrand-Kapelle | ✅ (Rohversion) |
+| Leuchtturm an der Küste | ✅ (Rohversion) |
 
 ## Starten (Entwicklung)
 
@@ -65,7 +65,7 @@ assets/        Icons
 
 ## Neue Szene hinzufügen
 
-1. Shader in `src/wallpaper/scenes/<name>.js` anlegen (Vorlage: `bergsee.js`)
+1. Shader in `src/wallpaper/scenes/<name>.js` anlegen (Vorlage: `camping.js`, nutzt `common.js`)
 2. In `src/wallpaper/scenes/index.js` eintragen
 3. In `src/shared/scenes.json` auf `"ready": true` setzen
 
