@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>Lettoscape Wallpaper</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #05070b; cursor: none; }
+    canvas { display: block; width: 100vw; height: 100vh; image-rendering: auto; }
+    #err { position: fixed; inset: 0; display: none; place-items: center; color: #e8d9c0;
+           font: 16px system-ui, sans-serif; background: #0b0d12; padding: 2rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="err"></div>
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

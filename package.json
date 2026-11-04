@@ -1,0 +1,45 @@
+{
+  "name": "lettoscape",
+  "productName": "Lettoscape",
+  "version": "0.1.0",
+  "description": "Cozy, immersive Live-Wallpaper mit Tag/Nacht, Wetter und Einstellungs-Panel.",
+  "main": "src/main/main.js",
+  "author": "Flaco2009",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "preview": "npx --yes http-server src -p 8080 -o /wallpaper/index.html",
+    "dist:win": "electron-builder --win nsis",
+    "dist:linux": "electron-builder --linux AppImage deb"
+  },
+  "dependencies": {
+    "koffi": "^2.16.3"
+  },
+  "devDependencies": {
+    "electron": "^45.2.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "ch.flaco2009.lettoscape",
+    "productName": "Lettoscape",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "asarUnpack": ["node_modules/koffi/**/*"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Lettoscape",
+      "runAfterFinish": true
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icon.png",
+      "category": "Utility"
+    }
+  }
+}

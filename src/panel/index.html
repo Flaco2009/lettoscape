@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'">
+  <title>Lettoscape</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="ember" aria-hidden="true"></span>
+      <div>
+        <h1>Lettoscape</h1>
+        <p class="sub" id="status">Live-Wallpaper</p>
+      </div>
+    </div>
+    <button class="icon-btn" id="close" title="Schliessen" aria-label="Schliessen">✕</button>
+  </header>
+
+  <main>
+    <section>
+      <h2>Szene</h2>
+      <div class="scenes" id="scenes"></div>
+    </section>
+
+    <section>
+      <h2>Tageszeit</h2>
+      <div class="seg" data-key="timeMode">
+        <button data-val="real">Echte Uhrzeit</button>
+        <button data-val="fixed">Fest</button>
+      </div>
+      <label class="row" id="hourRow">
+        <span>Uhrzeit</span>
+        <input type="range" min="0" max="23.75" step="0.25" data-key="hour">
+        <output data-for="hour" data-fmt="clock"></output>
+      </label>
+    </section>
+
+    <section>
+      <h2>Wetter</h2>
+      <div class="chips" data-key="weather">
+        <button data-val="clear">☀ Klar</button>
+        <button data-val="cloudy">☁ Bewölkt</button>
+        <button data-val="rain">☂ Regen</button>
+        <button data-val="snow">❄ Schnee</button>
+        <button data-val="fog">≋ Nebel</button>
+      </div>
+      <label class="row"><span>Talnebel</span><input type="range" min="0" max="1" step="0.01" data-key="fog"><output data-for="fog" data-fmt="pct"></output></label>
+      <label class="row"><span>Wolken</span><input type="range" min="0" max="1" step="0.01" data-key="clouds"><output data-for="clouds" data-fmt="pct"></output></label>
+    </section>
+
+    <section>
+      <h2>Bild</h2>
+      <label class="row"><span>Helligkeit</span><input type="range" min="0.5" max="1.5" step="0.01" data-key="brightness"><output data-for="brightness" data-fmt="pct"></output></label>
+      <label class="row"><span>Tempo</span><input type="range" min="0" max="3" step="0.05" data-key="speed"><output data-for="speed" data-fmt="x"></output></label>
+      <label class="toggle"><span>Maus-Parallax</span><input type="checkbox" data-key="parallax"><i></i></label>
+    </section>
+
+    <section>
+      <h2>Sound</h2>
+      <label class="toggle"><span>Ambient-Sound</span><input type="checkbox" data-key="sound"><i></i></label>
+      <label class="row"><span>Lautstärke</span><input type="range" min="0" max="1" step="0.01" data-key="volume"><output data-for="volume" data-fmt="pct"></output></label>
+    </section>
+
+    <section>
+      <h2>Leistung</h2>
+      <div class="seg" data-key="fps" data-num>
+        <button data-val="15">15 FPS</button>
+        <button data-val="30">30 FPS</button>
+        <button data-val="60">60 FPS</button>
+      </div>
+      <label class="row"><span>Auflösung</span><input type="range" min="0.4" max="1" step="0.05" data-key="renderScale"><output data-for="renderScale" data-fmt="pct"></output></label>
+      <div class="seg" data-key="quality">
+        <button data-val="low">Sparsam</button>
+        <button data-val="high">Schön</button>
+      </div>
+      <label class="toggle"><span>Pause bei Vollbild-Apps</span><input type="checkbox" data-key="pauseOnFullscreen"><i></i></label>
+    </section>
+
+    <section>
+      <h2>System</h2>
+      <label class="toggle"><span>Mit Windows starten</span><input type="checkbox" data-key="autostart"><i></i></label>
+      <label class="toggle"><span>Alle Bildschirme</span><input type="checkbox" data-key="allDisplays"><i></i></label>
+    </section>
+  </main>
+
+  <footer>
+    <button class="ghost" id="reset">Zurücksetzen</button>
+    <span class="ver" id="ver"></span>
+    <button class="ghost danger" id="quit">Beenden</button>
+  </footer>
+
+  <script src="panel.js"></script>
+</body>
+</html>
