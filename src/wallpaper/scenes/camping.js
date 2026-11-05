@@ -36,7 +36,7 @@ float sdObj(vec3 p, out float m) {
   if (length(f) < 3.0) {
     // Holzscheite (Pyramide aus 4 Stuecken)
     float logs = 1e9;
-    for (int i = 0; i < 4; i++) {
+    for (int i = ZERO; i < 4; i++) {
       float a = float(i) * 1.5708 + 0.3;
       vec3 dir = vec3(cos(a), 0.0, sin(a));
       logs = min(logs, sdCapsule(f, dir * 0.55 + vec3(0, 0.06, 0), vec3(0, 0.5, 0), 0.07));
@@ -101,7 +101,7 @@ vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
   col += pointGlow(ro, rd, t, FIRE + vec3(0, 0.5, 0), vec3(1.0, 0.45, 0.12) * fl, 1.3) * (0.5 + nightAmt);
   col = smokeColumn(ro, rd, t, col, FIRE + vec3(0.0, 1.0, 0.0), 0.6, 0.2);
   // Funken
-  for (int i = 0; i < 16; i++) {
+  for (int i = ZERO; i < 16; i++) {
     float fi = float(i);
     float life = fract(uTime * (0.25 + hash1(fi) * 0.2) + hash1(fi + 9.0));
     vec3 sp = FIRE + vec3(sin(fi * 2.1 + uTime) * 0.3 * life, 0.5 + life * 3.2, cos(fi * 1.3 + uTime * 0.7) * 0.3 * life);

@@ -33,7 +33,7 @@ float sdDeer(vec3 p) {
   float ears = min(sdCapsule(q, neckTop + vec3(0, 0.05, 0.06), neckTop + vec3(-0.05, 0.22 + twitch, 0.12), 0.025),
                    sdCapsule(q, neckTop + vec3(0, 0.05, -0.06), neckTop + vec3(-0.05, 0.22, -0.12), 0.025));
   float legs = 1e9;
-  for (int i = 0; i < 4; i++) {
+  for (int i = ZERO; i < 4; i++) {
     float lx = i < 2 ? 0.38 : -0.38;
     float lz = (i == 0 || i == 2) ? 0.1 : -0.1;
     legs = min(legs, sdCapsule(q, vec3(lx, 0.95, lz), vec3(lx + 0.02, 0.02, lz), 0.045));

@@ -56,8 +56,8 @@ float sdObj(vec3 p, out float m) {
   if (deck < best) { best = deck; m = 1.0; }
   vec3 w = q - vec3(-3.2, 0.0, -0.6);
   float pile = 1e9;
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) {
+  for (int i = ZERO; i < 3; i++) {
+    for (int j = ZERO; j < 3; j++) {
       if (j > 2 - i) continue;
       float y = 0.2 + float(i) * 0.36;
       float x = (float(j) - 0.5 * float(2 - i)) * 0.38;

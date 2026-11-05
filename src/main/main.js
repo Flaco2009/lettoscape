@@ -351,7 +351,19 @@ function updateSettings(patch) {
   return settings;
 }
 
-ipcMain.handle('get-settings', () => ({ settings, scenes: SCENES, version: app.getVersion(), platform: process.platform }));
+// Ladezustand der Szenen (vom Wallpaper gemeldet), fuers Panel
+const sceneStatus = {};
+ipcMain.on('scene-status', (_e, st) => {
+  if (!st || !st.id) return;
+  // mehrere Bildschirme: "bereit" gewinnt gegen "laedt"
+  const prev = sceneStatus[st.id];
+  if (st.state === 'loading' && prev && prev.state === 'ready') return;
+  sceneStatus[st.id] = st;
+  if (panel && !panel.isDestroyed()) panel.webContents.send('scene-status', st);
+  if (st.state === 'error') console.warn(`Szene ${st.id}: ${st.error}`);
+});
+
+ipcMain.handle('get-settings', () => ({ settings, scenes: SCENES, version: app.getVersion(), platform: process.platform, sceneStatus }));
 ipcMain.handle('set-settings', (_e, patch) => updateSettings(patch));
 ipcMain.handle('reset-settings', () => updateSettings({ ...DEFAULTS }));
 ipcMain.on('wallpaper-ready', (e) => e.sender.send('settings', settings));

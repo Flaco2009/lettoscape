@@ -6,9 +6,16 @@
   <title>Lettoscape Wallpaper</title>
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #05070b; cursor: none; }
-    canvas { display: block; width: 100vw; height: 100vh; image-rendering: auto; }
+    canvas { display: block; width: 100vw; height: 100vh; image-rendering: auto; transition: opacity 0.4s ease; }
+    #loading { position: fixed; left: 50%; bottom: 72px; transform: translate(-50%, 8px); padding: 8px 16px 8px 34px;
+               border-radius: 999px; background: rgba(20, 17, 15, 0.72); color: #efe4d4; font: 13px "Segoe UI", system-ui, sans-serif;
+               opacity: 0; transition: opacity 0.35s, transform 0.35s; pointer-events: none; }
+    #loading::before { content: ""; position: absolute; left: 13px; top: 50%; width: 11px; height: 11px; margin-top: -7px;
+               border-radius: 50%; border: 2px solid rgba(240, 160, 75, 0.3); border-top-color: #f0a04b; animation: spin 0.9s linear infinite; }
+    #loading.on { opacity: 1; transform: translate(-50%, 0); }
+    @keyframes spin { to { transform: rotate(360deg); } }
     #err { position: fixed; inset: 0; display: none; place-items: center; color: #e8d9c0;
-           font: 16px system-ui, sans-serif; background: #0b0d12; padding: 2rem; text-align: center; }
+           font: 16px system-ui, sans-serif; background: #0b0d12; padding: 2rem; text-align: center; white-space: pre-wrap; }
   </style>
 </head>
 <body>

@@ -35,53 +35,46 @@ const WEATHER = {
   fog:    { rain: 0, snow: 0, fogAdd: 0.6,  cloudAdd: 0.3 },
 };
 
-if (!gl) fail('WebGL2 wird von deiner Grafikkarte/deinem Treiber nicht unterstuetzt.');
 
 const vsSrc = `#version 300 es
 in vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
-let prog = null, uni = {}, currentScene = null;
+let prog = null, uni = {}, currentScene = null, currentId = null;
+
+const UNIFORMS = ['uRes', 'uTime', 'uHour', 'uRain', 'uSnow', 'uFog', 'uClouds', 'uBright', 'uMouse', 'uQuality'];
 
 function fail(msg) {
+  // Vollbild-Fehler nur, wenn gar nichts angezeigt werden kann
+  console.error(msg);
+  if (prog) return;
   errBox.textContent = 'Lettoscape: ' + msg;
   errBox.style.display = 'grid';
-  console.error(msg);
 }
 
-// Shader werden asynchron kompiliert (KHR_parallel_shader_compile): waehrend die neue Szene
-// kompiliert, laeuft die alte weiter und die Oberflaeche (Panel) friert nicht ein.
+// ---------- Szenen laden ----------
+// Die Shader sind gross. Unter Windows (Direct3D) kann das Kompilieren einige Sekunden dauern.
+// Deshalb:
+//  - KHR_parallel_shader_compile: kompiliert im Hintergrund, die alte Szene laeuft weiter
+//  - fertige Szenen bleiben im Speicher -> Zurueckwechseln ist sofort da
+//  - nach dem Start werden die uebrigen Szenen nach und nach im Hintergrund vorbereitet
+//  - Status (laedt / bereit / Fehler) geht ans Panel
 const parallel = gl && gl.getExtension('KHR_parallel_shader_compile');
-let pending = null; // { scene, p, vs, fs }
+const cache = new Map();   // id -> { p, uni }
+const jobs = new Map();    // id -> { p, vs, fs, t0, fg }
+const failed = new Map();  // id -> Fehlertext
+let wantedId = null;
+let warmTimer = null;
+let loadingHint = null;
 
-function finishLoad(job) {
-  const { scene, p, vs, fs } = job;
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-    const log = gl.getProgramInfoLog(p) || gl.getShaderInfoLog(fs) || gl.getShaderInfoLog(vs);
-    gl.deleteProgram(p);
-    fail('Shader-Fehler: ' + log);
-    return;
-  }
-  if (prog) gl.deleteProgram(prog);
-  prog = p;
-  currentScene = scene;
-  uni = {};
-  for (const n of ['uRes', 'uTime', 'uHour', 'uRain', 'uSnow', 'uFog', 'uClouds', 'uBright', 'uMouse', 'uQuality']) {
-    uni[n] = gl.getUniformLocation(prog, n);
-  }
+function report(id, state, extra = {}) {
+  if (api && api.sceneStatus) api.sceneStatus({ id, state, ...extra });
 }
 
-function pollPending() {
-  if (!pending) return;
-  if (parallel && !gl.getProgramParameter(pending.p, parallel.COMPLETION_STATUS_KHR)) return;
-  const job = pending;
-  pending = null;
-  finishLoad(job);
-}
-
-function loadScene(id) {
-  const scene = scenes[id] || scenes.bergsee;
-  if (currentScene === scene || (pending && pending.scene === scene)) return;
-  if (pending) gl.deleteProgram(pending.p);
+function startJob(id, fg) {
+  const scene = scenes[id];
+  if (!scene || cache.has(id) || failed.has(id)) return;
+  const job = jobs.get(id);
+  if (job) { if (fg) job.fg = true; return; }
   const vs = gl.createShader(gl.VERTEX_SHADER);
   gl.shaderSource(vs, vsSrc);
   gl.compileShader(vs);
@@ -93,18 +86,130 @@ function loadScene(id) {
   gl.attachShader(p, fs);
   gl.bindAttribLocation(p, 0, 'aPos');
   gl.linkProgram(p);
-  pending = { scene, p, vs, fs };
-  if (!parallel) pollPending(); // ohne Extension: synchron wie bisher
+  jobs.set(id, { p, vs, fs, t0: performance.now(), fg });
+  report(id, 'loading', { background: !fg });
+  if (!parallel) pollJobs(); // ohne Extension: synchron
 }
 
+function pollJobs() {
+  for (const [id, job] of jobs) {
+    if (parallel && !gl.getProgramParameter(job.p, parallel.COMPLETION_STATUS_KHR)) continue;
+    jobs.delete(id);
+    const ms = Math.round(performance.now() - job.t0);
+    const { p, vs, fs } = job;
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      const log = (gl.getShaderInfoLog(fs) || gl.getProgramInfoLog(p) || 'unbekannter Fehler').trim();
+      gl.deleteProgram(p);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      failed.set(id, log);
+      console.error(`Szene ${id}: Shader-Fehler nach ${ms} ms`, log);
+      report(id, 'error', { ms, error: log.slice(0, 400) });
+      if (id === wantedId) fail(`Szene "${scenes[id].name}" konnte nicht geladen werden.\n${log.slice(0, 300)}`);
+      continue;
+    }
+    gl.detachShader(p, vs);
+    gl.detachShader(p, fs);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    const u = {};
+    for (const n of UNIFORMS) u[n] = gl.getUniformLocation(p, n);
+    cache.set(id, { p, uni: u });
+    console.info(`Szene ${id} bereit nach ${ms} ms`);
+    report(id, 'ready', { ms });
+    if (id === wantedId) activate(id);
+  }
+  // Ladehinweis auf dem Wallpaper, falls es laenger dauert
+  const job = wantedId && jobs.get(wantedId);
+  showHint(job && performance.now() - job.t0 > 1500 ? scenes[wantedId].name : null);
+}
+
+let fadeTimer = null;
+function activate(id) {
+  const c = cache.get(id);
+  if (!c) return;
+  const swap = () => {
+    prog = c.p;
+    uni = c.uni;
+    currentScene = scenes[id];
+    currentId = id;
+    errBox.style.display = 'none';
+    canvas.style.opacity = '1';
+  };
+  clearTimeout(fadeTimer);
+  scheduleWarmup();
+  if (!prog || id === currentId) { swap(); return; }
+  // sanft ueberblenden: kurz abdunkeln, Szene tauschen, wieder aufhellen
+  canvas.style.opacity = '0';
+  fadeTimer = setTimeout(swap, 420);
+}
+
+function loadScene(id) {
+  if (!scenes[id]) id = 'bergsee';
+  wantedId = id;
+  if (cache.has(id)) { activate(id); return; }
+  if (failed.has(id)) {
+    report(id, 'error', { error: failed.get(id).slice(0, 400) });
+    if (!prog) fail(`Szene "${scenes[id].name}" konnte nicht geladen werden.`);
+    return;
+  }
+  startJob(id, true);
+}
+
+// Uebrige Szenen im Hintergrund vorbereiten, eine nach der anderen
+function scheduleWarmup() {
+  clearTimeout(warmTimer);
+  if (!parallel || settings.preload === false) return;
+  warmTimer = setTimeout(() => {
+    if (jobs.size > 0) { scheduleWarmup(); return; }
+    const next = Object.keys(scenes).find((k) => !cache.has(k) && !failed.has(k));
+    if (!next) return;
+    startJob(next, false);
+    scheduleWarmup();
+  }, 8000);
+}
+
+function showHint(name) {
+  if (!loadingHint) {
+    loadingHint = document.createElement('div');
+    loadingHint.id = 'loading';
+    document.body.appendChild(loadingHint);
+  }
+  if (name) {
+    loadingHint.textContent = name + ' wird vorbereitet …';
+    loadingHint.classList.add('on');
+  } else {
+    loadingHint.classList.remove('on');
+  }
+}
+
+if (!gl) fail('WebGL2 wird von deiner Grafikkarte/deinem Treiber nicht unterstuetzt.');
+
+// GPU-Absturz / Treiber-Reset: Bild selbst wiederherstellen
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  console.warn('WebGL-Kontext verloren');
+  prog = null;
+  currentId = null;
+  cache.clear();
+  jobs.clear();
+  report(wantedId, 'lost');
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  console.warn('WebGL-Kontext wiederhergestellt');
+  initGeometry();
+  loadScene(wantedId || settings.scene);
+});
+
 // Vollbild-Dreieck
-const buf = gl && gl.createBuffer();
-if (gl) {
+function initGeometry() {
+  const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 }
+if (gl) initGeometry();
 
 function resize() {
   const s = Math.min(Math.max(settings.renderScale, 0.3), 1.5);
@@ -143,7 +248,7 @@ cur.hour = targetHour();
 
 function frame(now) {
   requestAnimationFrame(frame);
-  pollPending();
+  if (gl && !gl.isContextLost()) pollJobs();
   if (paused) { last = now; return; }
   const minDt = 1000 / Math.max(5, settings.fps);
   if (now - lastDraw < minDt - 1) return;
@@ -171,7 +276,7 @@ function frame(now) {
 
   ambience.setWeather(cur.rain, cur.hour);
 
-  if (!prog) return;
+  if (!prog || gl.isContextLost()) return;
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.useProgram(prog);
   gl.uniform2f(uni.uRes, canvas.width, canvas.height);
@@ -208,4 +313,4 @@ if (api) {
 }
 
 // Fuer Screenshots/Tests
-window.__lettoscape = { applySettings, get settings() { return settings; }, cur };
+window.__lettoscape = { applySettings, get settings() { return settings; }, cur, currentId: () => currentId, cached: () => [...cache.keys()] };

@@ -19,5 +19,6 @@
   "showInTaskbar": true,
   "cornerMenu": true,
   "panelPinned": false,
-  "taskbarSync": true
+  "taskbarSync": true,
+  "preload": true
 }

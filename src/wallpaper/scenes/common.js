@@ -28,6 +28,11 @@ uniform float uBright;
 uniform vec2  uMouse;
 uniform float uQuality;
 
+// ZERO ist immer 0, aber der Compiler weiss das nicht. Schleifen, die bei ZERO starten,
+// werden deshalb nicht ausgerollt und Funktionen darin nicht vervielfacht. Das verkuerzt die
+// Kompilierzeit unter Windows (Direct3D/fxc) von Minuten auf Sekunden.
+#define ZERO min(int(uRes.x), 0)
+
 const float PI = 3.14159265;
 const mat2 ROT = mat2(0.8, -0.6, 0.6, 0.8);
 
@@ -46,8 +51,7 @@ float noise(vec2 p) {
 }
 float fbm(vec2 p, int oct) {
   float a = 0.5, s = 0.0;
-  for (int i = 0; i < 8; i++) {
-    if (i >= oct) break;
+  for (int i = ZERO; i < oct; i++) {
     s += a * noise(p);
     p = ROT * p * 2.03;
     a *= 0.5;
@@ -56,8 +60,7 @@ float fbm(vec2 p, int oct) {
 }
 float ridged(vec2 p, int oct) {
   float a = 0.5, s = 0.0, w = 1.0;
-  for (int i = 0; i < 9; i++) {
-    if (i >= oct) break;
+  for (int i = ZERO; i < oct; i++) {
     float n = 1.0 - abs(noise(p) * 2.0 - 1.0);
     n *= n;
     s += a * n * w;
@@ -312,16 +315,10 @@ float sceneH(vec2 p, float t, out float g) {
   return g + treeH(p, g);
 }
 
-float fieldD(vec3 p, float t) {
-  float g, om;
-  return min((p.y - sceneH(p.xz, t, g)) * 0.6, sdObj(p, om));
-}
-
 float march(vec3 ro, vec3 rd, float tmax, int steps, out float m, out float g) {
   float t = 0.05;
   m = 0.0; g = 0.0;
-  for (int i = 0; i < 280; i++) {
-    if (i >= steps) break;
+  for (int i = ZERO; i < steps; i++) {
     vec3 p = ro + rd * t;
     float h = sceneH(p.xz, t, g);
     float dT = p.y - h;
@@ -340,7 +337,7 @@ float softShadow(vec3 ro, vec3 rd) {
   // Startpunkt leicht verrauscht, damit keine Streifen (Banding) entstehen
   float res = 1.0, t = 0.3 + 0.3 * hash(ro.xz * 37.0 + fract(uTime));
   float ph = 1e10;
-  for (int i = 0; i < 48; i++) {
+  for (int i = ZERO; i < 48; i++) {
     vec3 p = ro + rd * t;
     float om;
     float hT = p.y - groundH(p.xz, t < 8.0 ? 8 : 4);
@@ -360,25 +357,27 @@ float softShadow(vec3 ro, vec3 rd) {
   return res * res * (3.0 - 2.0 * res);
 }
 
-vec3 calcNormal(vec3 p, float t) {
-  float e = 0.0015 * t + 0.004;
-  vec2 k = vec2(1.0, -1.0);
-  return normalize(k.xyy * fieldD(p + k.xyy * e, t) + k.yyx * fieldD(p + k.yyx * e, t) +
-                   k.yxy * fieldD(p + k.yxy * e, t) + k.xxx * fieldD(p + k.xxx * e, t));
-}
-
 vec3 terrainNormal(vec2 p, float t) {
   float e = 0.002 * t + 0.03, g;
-  float hx = sceneH(p + vec2(e, 0), t, g) - sceneH(p - vec2(e, 0), t, g);
-  float hz = sceneH(p + vec2(0, e), t, g) - sceneH(p - vec2(0, e), t, g);
+  float hx = 0.0, hz = 0.0;
+  for (int i = ZERO; i < 4; i++) {
+    float sx = i == 0 ? 1.0 : (i == 1 ? -1.0 : 0.0);
+    float sz = i == 2 ? 1.0 : (i == 3 ? -1.0 : 0.0);
+    float hh = sceneH(p + vec2(sx, sz) * e, t, g);
+    hx += sx * hh;
+    hz += sz * hh;
+  }
   return normalize(vec3(-hx, 2.0 * e, -hz));
 }
 
 vec3 objNormal(vec3 p, float t) {
   float e = 0.0008 * t + 0.002, om;
-  vec2 k = vec2(1.0, -1.0);
-  return normalize(k.xyy * sdObj(p + k.xyy * e, om) + k.yyx * sdObj(p + k.yyx * e, om) +
-                   k.yxy * sdObj(p + k.yxy * e, om) + k.xxx * sdObj(p + k.xxx * e, om));
+  vec3 n = vec3(0.0);
+  for (int i = ZERO; i < 4; i++) {
+    vec3 k = 0.5773 * (2.0 * vec3((((i + 3) >> 1) & 1), ((i >> 1) & 1), (i & 1)) - 1.0);
+    n += k * sdObj(p + k * e, om);
+  }
+  return normalize(n);
 }
 
 vec3 terrainAlbedo(vec3 p, vec3 n, float g, float t) {
@@ -471,7 +470,7 @@ vec3 birds(vec2 uv, vec3 col) {
   float tt = uTime * 0.035;
   vec2 c = vec2(fract(tt * 0.6 + 0.3) * 2.6 - 1.3, 0.3 + 0.04 * sin(tt * 2.0));
   float acc = 0.0;
-  for (int i = 0; i < 12; i++) {
+  for (int i = ZERO; i < 12; i++) {
     float fi = float(i);
     vec2 o = vec2(sin(fi * 2.3 + tt * 3.0) * 0.06 + fi * 0.008, cos(fi * 1.7 + tt * 2.5) * 0.025);
     vec2 d = uv - (c + o);
@@ -485,7 +484,7 @@ vec3 birds(vec2 uv, vec3 col) {
 vec3 fireflies(vec2 uv, vec3 col) {
   float amt = nightAmt * (1.0 - uRain) * (1.0 - uSnow);
   if (amt < 0.01) return col;
-  for (int i = 0; i < 24; i++) {
+  for (int i = ZERO; i < 24; i++) {
     float fi = float(i);
     vec2 base = vec2(hash(vec2(fi, 1.0)) * 2.4 - 1.2, -0.3 + hash(vec2(fi, 2.0)) * 0.25);
     vec2 p = base + 0.03 * vec2(sin(uTime * 0.3 + fi * 4.0), cos(uTime * 0.23 + fi * 2.0));
@@ -499,7 +498,7 @@ vec3 fireflies(vec2 uv, vec3 col) {
 vec3 precipitation(vec2 uv, vec3 col) {
   if (uRain > 0.01) {
     float acc = 0.0;
-    for (int l = 0; l < 3; l++) {
+    for (int l = ZERO; l < 3; l++) {
       float fl = float(l);
       vec2 q = uv * vec2(90.0 + fl * 40.0, 2.5 + fl);
       q.x += q.y * 0.15;
@@ -512,7 +511,7 @@ vec3 precipitation(vec2 uv, vec3 col) {
     col = mix(col, col + vec3(0.6, 0.65, 0.7) * mix(0.15, 0.6, dayAmt), clamp(acc, 0.0, 1.0) * 0.35);
   }
   if (uSnow > 0.01) {
-    for (int l = 0; l < 4; l++) {
+    for (int l = ZERO; l < 4; l++) {
       float fl = float(l);
       float sc = 12.0 + fl * 9.0;
       vec2 q = uv * sc;
@@ -532,7 +531,7 @@ vec3 precipitation(vec2 uv, vec3 col) {
 vec3 leaves(vec2 uv, vec3 col) {
   float amt = LEAVES * (1.0 - uSnow) * (1.0 - uRain * 0.6);
   if (amt < 0.01) return col;
-  for (int l = 0; l < 3; l++) {
+  for (int l = ZERO; l < 3; l++) {
     float fl = float(l);
     float sc = 3.5 + fl * 3.0;
     vec2 q = uv * sc;
@@ -561,7 +560,7 @@ vec3 motes(vec2 uv, vec3 rd, vec3 col) {
   float amt = dayAmt * (1.0 - overcast) * (1.0 - uRain);
   if (amt < 0.01) return col;
   float toward = 0.35 + 1.6 * pow(max(dot(rd, sunDir), 0.0), 4.0);
-  for (int l = 0; l < 2; l++) {
+  for (int l = ZERO; l < 2; l++) {
     float fl = float(l);
     float sc = 22.0 + fl * 18.0;
     vec2 q = uv * sc + vec2(uTime * 0.12, sin(uTime * 0.1 + fl) * 0.4) * (1.0 + fl);
@@ -580,7 +579,7 @@ vec3 motes(vec2 uv, vec3 rd, vec3 col) {
 vec3 shootingStars(vec2 uv, vec3 col, float skyMask) {
   float amt = nightAmt * (1.0 - overcast) * skyMask;
   if (amt < 0.01) return col;
-  for (int i = 0; i < 2; i++) {
+  for (int i = ZERO; i < 2; i++) {
     float P = 17.0 + float(i) * 11.0;
     float id = floor((uTime + float(i) * 7.0) / P);
     float ph = fract((uTime + float(i) * 7.0) / P);
@@ -605,7 +604,7 @@ vec3 bats(vec2 uv, vec3 col) {
   float amt = BATS * max(duskAmt, nightAmt * 0.8) * (1.0 - uRain);
   if (amt < 0.01) return col;
   float acc = 0.0;
-  for (int i = 0; i < 5; i++) {
+  for (int i = ZERO; i < 5; i++) {
     float fi = float(i);
     float tt = uTime * (0.25 + hash1(fi) * 0.15) + fi * 13.0;
     vec2 c = vec2(sin(tt * 0.9 + fi) * 0.7 + sin(tt * 2.3) * 0.1, 0.18 + 0.12 * sin(tt * 0.7 + fi * 2.0) + 0.04 * sin(tt * 3.1));
@@ -623,7 +622,7 @@ vec3 bats(vec2 uv, vec3 col) {
 vec3 butterflies(vec2 uv, vec3 col) {
   float amt = BUTTERFLIES * dayAmt * (1.0 - uRain) * (1.0 - uSnow);
   if (amt < 0.01) return col;
-  for (int i = 0; i < 6; i++) {
+  for (int i = ZERO; i < 6; i++) {
     float fi = float(i);
     float tt = uTime * (0.3 + hash1(fi + 3.0) * 0.2) + fi * 9.0;
     vec2 c = vec2(sin(tt * 0.7 + fi * 1.7) * 0.75, -0.3 + 0.12 * sin(tt * 1.3 + fi) + 0.03 * sin(tt * 5.0));
@@ -657,72 +656,88 @@ void main() {
   vec3 rd = normalize(fw * 1.55 + uv.x * rt + uv.y * up);
 
   int steps = uQuality > 0.5 ? 240 : 150;
-  float tWater = (HAS_WATER == 1 && rd.y < 0.0) ? -ro.y / rd.y : 1e9;
 
-  float m, g;
-  float t = march(ro, rd, min(tWater, TMAX), steps, m, g);
-  vec3 col;
+  // Bis zu zwei Durchgaenge: 1. Blickstrahl, 2. Spiegelung auf dem Wasser.
+  // Als Schleife geschrieben, damit march() und shade() nur EINMAL im Code stehen.
+  vec3 pro = ro, prd = rd;
+  vec3 col = vec3(0.0);
   float tHit = TMAX;
+  bool viaWater = false;
+  vec3 wN = vec3(0.0, 1.0, 0.0), wRR = vec3(0.0, 1.0, 0.0), wP = vec3(0.0);
+  float tWater = 1e9;
+  int passes = HAS_WATER == 1 ? 2 : 1;
 
-  if (t > 0.0) {
-    vec3 p = ro + rd * t;
-    col = shade(p, rd, t, m, g, false);
-    col = applyFog(col, ro, rd, t);
-    tHit = t;
-  } else if (HAS_WATER == 1 && tWater < TMAX) {
-    vec3 p = ro + rd * tWater;
-    float sp = uTime * (0.35 + uRain * 0.6);
-    vec2 wp = p.xz * vec2(0.35, 0.9) + WAVE_DIR * sp;
-    float e = 0.05;
-    float w0 = fbm(wp * 0.9 + sp * 0.3, 4);
-    float wx = fbm((wp + vec2(e, 0)) * 0.9 + sp * 0.3, 4);
-    float wz = fbm((wp + vec2(0, e)) * 0.9 + sp * 0.3, 4);
-    float amp = (WAVE_AMP + uRain * 0.15) * exp(-tWater * 0.02);
-    vec3 n = normalize(vec3(-(wx - w0) / e * amp, 1.0, -(wz - w0) / e * amp));
-    if (uRain > 0.01) {
-      vec2 rc = floor(p.xz * 1.2);
-      vec2 rf = fract(p.xz * 1.2) - 0.5;
-      float ph = fract(uTime * 0.8 + hash(rc));
-      float ring = sin((length(rf) - ph * 0.5) * 60.0) * smoothstep(0.5, 0.0, length(rf)) * (1.0 - ph);
-      n.xz += normalize(rf + 1e-4) * ring * 0.15 * uRain;
-      n = normalize(n);
-    }
-    // springende Fische: ab und zu Ringe auf dem Wasser
-    if (FISH > 0.0) {
-      vec2 fc = floor(p.xz / 9.0);
-      float fh = hash(fc + 41.0);
-      if (fh > 0.55) {
-        vec2 ctr = (fc + 0.2 + 0.6 * vec2(hash(fc + 2.0), hash(fc + 7.0))) * 9.0;
-        float ph = fract(uTime * (0.05 + fh * 0.04) + fh * 10.0);
-        float dd = length(p.xz - ctr);
-        float ring = sin((dd - ph * 4.0) * 9.0) * smoothstep(ph * 4.0 + 0.6, ph * 4.0, dd) * smoothstep(ph * 4.0 - 1.5, ph * 4.0, dd) * (1.0 - ph);
-        n.xz += normalize(p.xz - ctr + 1e-4) * ring * 0.12 * FISH;
+  for (int pass = ZERO; pass < passes; pass++) {
+    bool second = pass > 0;
+    float tw = (HAS_WATER == 1 && !second && prd.y < 0.0) ? -pro.y / prd.y : 1e9;
+    int st = second ? (uQuality > 0.5 ? 130 : 80) : steps;
+    float m, g;
+    float t = march(pro, prd, min(tw, TMAX), st, m, g);
+    float tSeg = TMAX;
+    vec3 c;
+    if (t > 0.0) {
+      c = shade(pro + prd * t, prd, t, m, g, second);
+      c = applyFog(c, pro, prd, t);
+      tSeg = t;
+    } else if (tw < TMAX) {
+#if HAS_WATER == 1
+      // Wasser getroffen: Welle-Normale bestimmen, dann zweiter Durchgang fuer die Spiegelung
+      vec3 p = pro + prd * tw;
+      float sp = uTime * (0.35 + uRain * 0.6);
+      vec2 wp = p.xz * vec2(0.35, 0.9) + WAVE_DIR * sp;
+      float e = 0.05;
+      float w0 = fbm(wp * 0.9 + sp * 0.3, 4);
+      float wx = fbm((wp + vec2(e, 0)) * 0.9 + sp * 0.3, 4);
+      float wz = fbm((wp + vec2(0, e)) * 0.9 + sp * 0.3, 4);
+      float amp = (WAVE_AMP + uRain * 0.15) * exp(-tw * 0.02);
+      vec3 n = normalize(vec3(-(wx - w0) / e * amp, 1.0, -(wz - w0) / e * amp));
+      if (uRain > 0.01) {
+        vec2 rc = floor(p.xz * 1.2);
+        vec2 rf = fract(p.xz * 1.2) - 0.5;
+        float ph = fract(uTime * 0.8 + hash(rc));
+        float ring = sin((length(rf) - ph * 0.5) * 60.0) * smoothstep(0.5, 0.0, length(rf)) * (1.0 - ph);
+        n.xz += normalize(rf + 1e-4) * ring * 0.15 * uRain;
         n = normalize(n);
       }
-    }
-    vec3 rr = reflect(rd, n);
-    rr.y = abs(rr.y);
-    float m2, g2;
-    float t2 = march(p + vec3(0, 0.02, 0), rr, TMAX, uQuality > 0.5 ? 130 : 80, m2, g2);
-    vec3 refl;
-    if (t2 > 0.0) {
-      vec3 p2 = p + rr * t2;
-      refl = shade(p2, rr, t2, m2, g2, true);
-      refl = applyFog(refl, p, rr, t2);
+      // springende Fische: ab und zu Ringe auf dem Wasser
+      if (FISH > 0.0) {
+        vec2 fc = floor(p.xz / 9.0);
+        float fh = hash(fc + 41.0);
+        if (fh > 0.55) {
+          vec2 ctr = (fc + 0.2 + 0.6 * vec2(hash(fc + 2.0), hash(fc + 7.0))) * 9.0;
+          float ph = fract(uTime * (0.05 + fh * 0.04) + fh * 10.0);
+          float dd = length(p.xz - ctr);
+          float ring = sin((dd - ph * 4.0) * 9.0) * smoothstep(ph * 4.0 + 0.6, ph * 4.0, dd) * smoothstep(ph * 4.0 - 1.5, ph * 4.0, dd) * (1.0 - ph);
+          n.xz += normalize(p.xz - ctr + 1e-4) * ring * 0.12 * FISH;
+          n = normalize(n);
+        }
+      }
+      vec3 rr = reflect(prd, n);
+      rr.y = abs(rr.y);
+      viaWater = true;
+      wN = n; wRR = rr; wP = p; tWater = tw;
+      pro = p + vec3(0.0, 0.02, 0.0);
+      prd = rr;
+      continue;
+#endif
     } else {
-      refl = sky(rr);
+      c = sky(prd);
+      if (!second) c = mix(c, applyFog(c, pro, prd, TMAX), 0.35 * smoothstep(0.25, 0.0, prd.y));
     }
-    refl = sceneVolume(p, rr, t2 > 0.0 ? t2 : TMAX, refl);
-    float fres = 0.04 + 0.96 * pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
-    fres = mix(fres, 1.0, 0.55);
-    vec3 water = vec3(0.01, 0.035, 0.04) * (0.3 + dayAmt);
-    col = mix(water, refl * 0.92, fres);
-    col += lightCol * pow(max(dot(rr, lightDir), 0.0), 400.0) * 1.5;
-    col = applyFog(col, ro, rd, tWater);
-    tHit = tWater;
-  } else {
-    col = sky(rd);
-    col = mix(col, applyFog(col, ro, rd, TMAX), 0.35 * smoothstep(0.25, 0.0, rd.y));
+    if (second) {
+      // Spiegelbild mit Wasser kombinieren
+      c = sceneVolume(pro, prd, tSeg, c);
+      float fres = 0.04 + 0.96 * pow(1.0 - max(dot(-rd, wN), 0.0), 5.0);
+      fres = mix(fres, 1.0, 0.55);
+      vec3 water = vec3(0.01, 0.035, 0.04) * (0.3 + dayAmt);
+      c = mix(water, c * 0.92, fres);
+      c += lightCol * pow(max(dot(wRR, lightDir), 0.0), 400.0) * 1.5;
+      c = applyFog(c, ro, rd, tWater);
+      tSeg = tWater;
+    }
+    col = c;
+    tHit = tSeg;
+    break;
   }
 
   col = sceneVolume(ro, rd, tHit, col);

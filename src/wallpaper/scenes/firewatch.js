@@ -41,7 +41,7 @@ float sdObj(vec3 p, out float m) {
   float best = 1e9;
   // Beine + Ringe
   float legs = 1e9;
-  for (int i = 0; i < 4; i++) {
+  for (int i = ZERO; i < 4; i++) {
     vec2 s = vec2(i == 0 || i == 3 ? 1.0 : -1.0, i < 2 ? 1.0 : -1.0);
     legs = min(legs, sdCapsule(q, vec3(s.x * 2.6, -0.5, s.y * 2.6), vec3(s.x * 1.4, 15.0, s.y * 1.4), 0.12));
   }

@@ -16,7 +16,8 @@
     leuchtturm:   ['#0e1a26', '#2e5873', '#f5d38a'],
   };
 
-  const { settings: initial, scenes, version, platform } = await api.getSettings();
+  const { settings: initial, scenes, version, platform, sceneStatus: initialStatus } = await api.getSettings();
+  const status = { ...(initialStatus || {}) };
   let s = initial;
 
   // ---- Szenen ----
@@ -92,7 +93,18 @@
     pin.setAttribute('aria-pressed', String(!!s.panelPinned));
     pin.title = s.panelPinned ? 'Angepinnt: bleibt offen (Klick zum Lösen)' : 'Anpinnen: Panel bleibt offen';
     const sc = scenes.find((x) => x.id === s.scene);
-    document.getElementById('status').textContent = (sc ? sc.name : '') + ' · ' + (s.timeMode === 'real' ? 'echte Uhrzeit' : fmt.clock(s.hour));
+    // Ladezustand je Szene
+    document.querySelectorAll('.scene').forEach((el) => {
+      const st = status[el.dataset.id];
+      el.classList.toggle('loading', !!st && (st.state === 'loading' || st.state === 'lost') && !st.background);
+      el.classList.toggle('failed', !!st && st.state === 'error');
+      el.title = st && st.state === 'error' ? 'Fehler beim Laden: ' + st.error : '';
+    });
+    const cs = status[s.scene];
+    let line = (sc ? sc.name : '') + ' · ' + (s.timeMode === 'real' ? 'echte Uhrzeit' : fmt.clock(s.hour));
+    if (cs && (cs.state === 'loading' || cs.state === 'lost')) line = (sc ? sc.name : 'Szene') + ' wird vorbereitet …';
+    if (cs && cs.state === 'error') line = (sc ? sc.name : 'Szene') + ': Fehler beim Laden';
+    document.getElementById('status').textContent = line;
   }
 
   let pending = null;
@@ -109,6 +121,7 @@
   }
 
   api.onSettings((ns) => { s = ns; render(); });
+  if (api.onSceneStatus) api.onSceneStatus((st) => { status[st.id] = st; render(); });
 
   document.getElementById('close').addEventListener('click', () => api.hidePanel());
   document.getElementById('pin').addEventListener('click', () => set({ panelPinned: !s.panelPinned }));
@@ -127,7 +140,7 @@
     const defaults = {
       scene: 'bergsee', timeMode: 'real', hour: 20, weather: 'clear', fog: 0.45, clouds: 0.35, brightness: 1,
       speed: 1, fps: 30, renderScale: 0.75, quality: 'high', parallax: true, sound: false, volume: 0.5,
-      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, taskbarSync: true,
+      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: true, taskbarSync: true,
     };
     let st = { ...defaults };
     const names = ['Bergsee', 'Camping-Platz', 'Feuerwachturm', 'Verlassenes Schloss', 'Waldlichtung', 'Jägerhütte', 'Alte Mühle am Bach', 'Verlassener Bahnhof', 'Waldrand-Kapelle', 'Leuchtturm an der Küste'];
@@ -137,6 +150,7 @@
       setSettings: async (p) => (st = { ...st, ...p }),
       resetSettings: async () => (st = { ...defaults }),
       onSettings: () => {},
+      onSceneStatus: () => {},
       hidePanel: () => {},
       quit: () => {},
     };

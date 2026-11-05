@@ -91,7 +91,7 @@ vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
   float tm = min(t, 420.0);
   float dt = tm / 28.0;
   float dens = 0.0;
-  for (int i = 0; i < 28; i++) {
+  for (int i = ZERO; i < 28; i++) {
     vec3 x = ro + rd * (dt * (float(i) + hash(gl_FragCoord.xy + float(i))));
     vec3 v = x - LAMP;
     float al = dot(v, b);

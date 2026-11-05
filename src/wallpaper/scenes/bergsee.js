@@ -16,6 +16,9 @@ uniform float uBright;   // 0.5..1.5
 uniform vec2  uMouse;    // -1..1 Parallax
 uniform float uQuality;  // 0 = niedrig, 1 = hoch
 
+// ZERO: siehe common.js – verhindert Ausrollen von Schleifen (schnelleres Kompilieren unter Windows)
+#define ZERO min(int(uRes.x), 0)
+
 const float PI = 3.14159265;
 const mat2 ROT = mat2(0.8, -0.6, 0.6, 0.8);
 
@@ -33,8 +36,7 @@ float noise(vec2 p) {
 }
 float fbm(vec2 p, int oct) {
   float a = 0.5, s = 0.0;
-  for (int i = 0; i < 8; i++) {
-    if (i >= oct) break;
+  for (int i = ZERO; i < oct; i++) {
     s += a * noise(p);
     p = ROT * p * 2.03;
     a *= 0.5;
@@ -43,8 +45,7 @@ float fbm(vec2 p, int oct) {
 }
 float ridged(vec2 p, int oct) {
   float a = 0.5, s = 0.0, w = 1.0;
-  for (int i = 0; i < 9; i++) {
-    if (i >= oct) break;
+  for (int i = ZERO; i < oct; i++) {
     float n = 1.0 - abs(noise(p) * 2.0 - 1.0);
     n *= n;
     s += a * n * w;
@@ -191,8 +192,7 @@ vec3 sky(vec3 rd, bool withClouds) {
 float marchTerrain(vec3 ro, vec3 rd, float tmax, int steps, out float gOut) {
   float t = 0.1;
   gOut = 0.0;
-  for (int i = 0; i < 260; i++) {
-    if (i >= steps) break;
+  for (int i = ZERO; i < steps; i++) {
     vec3 p = ro + rd * t;
     float g;
     float h = sceneH(p.xz, t, g);
@@ -207,7 +207,7 @@ float marchTerrain(vec3 ro, vec3 rd, float tmax, int steps, out float gOut) {
 
 float softShadow(vec3 ro, vec3 rd) {
   float res = 1.0, t = 0.5;
-  for (int i = 0; i < 40; i++) {
+  for (int i = ZERO; i < 40; i++) {
     vec3 p = ro + rd * t;
     float h = p.y - groundH(p.xz, t < 8.0 ? 8 : 4);
     res = min(res, 10.0 * h / t);
@@ -218,10 +218,15 @@ float softShadow(vec3 ro, vec3 rd) {
 }
 
 vec3 calcNormal(vec2 p, float t) {
-  float e = 0.004 * t + 0.02;
-  float g;
-  float hx = sceneH(p + vec2(e, 0), t, g) - sceneH(p - vec2(e, 0), t, g);
-  float hz = sceneH(p + vec2(0, e), t, g) - sceneH(p - vec2(0, e), t, g);
+  float e = 0.004 * t + 0.02, g;
+  float hx = 0.0, hz = 0.0;
+  for (int i = ZERO; i < 4; i++) {
+    float sx = i == 0 ? 1.0 : (i == 1 ? -1.0 : 0.0);
+    float sz = i == 2 ? 1.0 : (i == 3 ? -1.0 : 0.0);
+    float hh = sceneH(p + vec2(sx, sz) * e, t, g);
+    hx += sx * hh;
+    hz += sz * hh;
+  }
   return normalize(vec3(-hx, 2.0 * e, -hz));
 }
 
@@ -293,7 +298,7 @@ vec3 birds(vec2 uv, vec3 col) {
   float tt = uTime * 0.035;
   vec2 c = vec2(fract(tt * 0.6 + 0.3) * 2.6 - 1.3, 0.22 + 0.04 * sin(tt * 2.0));
   float acc = 0.0;
-  for (int i = 0; i < 14; i++) {
+  for (int i = ZERO; i < 14; i++) {
     float fi = float(i);
     vec2 o = vec2(sin(fi * 2.3 + tt * 3.0) * 0.06 + fi * 0.008, cos(fi * 1.7 + tt * 2.5) * 0.025);
     vec2 bp = c + o;
@@ -309,7 +314,7 @@ vec3 birds(vec2 uv, vec3 col) {
 vec3 fireflies(vec2 uv, vec3 col) {
   float amt = nightAmt * (1.0 - uRain) * (1.0 - uSnow);
   if (amt < 0.01) return col;
-  for (int i = 0; i < 28; i++) {
+  for (int i = ZERO; i < 28; i++) {
     float fi = float(i);
     vec2 base = vec2(hash(vec2(fi, 1.0)) * 2.4 - 1.2, -0.28 + hash(vec2(fi, 2.0)) * 0.22);
     vec2 p = base + 0.03 * vec2(sin(uTime * 0.3 + fi * 4.0), cos(uTime * 0.23 + fi * 2.0));
@@ -323,7 +328,7 @@ vec3 fireflies(vec2 uv, vec3 col) {
 vec3 precipitation(vec2 uv, vec3 col) {
   if (uRain > 0.01) {
     float acc = 0.0;
-    for (int l = 0; l < 3; l++) {
+    for (int l = ZERO; l < 3; l++) {
       float fl = float(l);
       vec2 q = uv * vec2(90.0 + fl * 40.0, 2.5 + fl);
       q.x += q.y * 0.15;
@@ -337,7 +342,7 @@ vec3 precipitation(vec2 uv, vec3 col) {
     col = mix(col, col + vec3(0.6, 0.65, 0.7) * mix(0.15, 0.6, dayAmt), clamp(acc, 0.0, 1.0) * 0.35);
   }
   if (uSnow > 0.01) {
-    for (int l = 0; l < 4; l++) {
+    for (int l = ZERO; l < 4; l++) {
       float fl = float(l);
       float sc = 12.0 + fl * 9.0;
       vec2 q = uv * sc;
