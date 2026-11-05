@@ -27,7 +27,11 @@
     b.className = 'scene' + (sc.ready ? '' : ' soon');
     b.dataset.id = sc.id;
     const c = SCENE_COLORS[sc.id] || ['#222', '#444', '#666'];
-    b.style.backgroundImage = `radial-gradient(60% 50% at 70% 80%, ${c[2]}66, transparent 70%), linear-gradient(160deg, ${c[0]}, ${c[1]})`;
+    // echtes Vorschaubild (passend zur Tageszeit), Farbverlauf als Rueckfall
+    const h = new Date().getHours() + new Date().getMinutes() / 60;
+    const slot = h >= 7.5 && h < 16.5 ? 'day' : ((h >= 16.5 && h < 20) || (h >= 5.5 && h < 7.5)) ? 'dusk' : 'night';
+    b.style.backgroundImage = `url("../wallpaper/previews/${sc.id}-${slot}-thumb.jpg"), radial-gradient(60% 50% at 70% 80%, ${c[2]}66, transparent 70%), linear-gradient(160deg, ${c[0]}, ${c[1]})`;
+    b.style.backgroundPosition = 'center';
     const label = document.createElement('span');
     label.textContent = sc.name;
     b.appendChild(label);
@@ -187,7 +191,7 @@
     const defaults = {
       scene: 'bergsee', timeMode: 'real', hour: 20, weather: 'clear', fog: 0.45, clouds: 0.35, brightness: 1,
       speed: 1, fps: 30, renderScale: 0.75, quality: 'high', parallax: true, sound: false, volume: 0.5,
-      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: false, power: 'balanced', batterySaver: true, autoPerformance: true, pauseMode: 'desktop', taskbarSync: true,
+      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: true, power: 'balanced', batterySaver: true, autoPerformance: true, pauseMode: 'desktop', taskbarSync: true,
     };
     let st = { ...defaults };
     const names = ['Bergsee', 'Camping-Platz', 'Feuerwachturm', 'Verlassenes Schloss', 'Waldlichtung', 'Jägerhütte', 'Alte Mühle am Bach', 'Verlassener Bahnhof', 'Waldrand-Kapelle', 'Leuchtturm an der Küste'];

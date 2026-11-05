@@ -1,0 +1,70 @@
+// Lettoscape – Vorschaubilder erzeugen
+//
+// Rendert jede Szene zu drei Tageszeiten und speichert die Bilder in src/wallpaper/previews/.
+// Die App zeigt sie sofort an, wenn man eine Szene anklickt, die noch nicht fertig kompiliert ist,
+// und nutzt die kleinen Versionen als Kacheln im Panel.
+//
+// Aufruf:  npm run previews              (alle Szenen)
+//          npm run previews -- camping   (nur bestimmte Szenen)
+//
+// Nach Aenderungen an einer Szene einfach neu erzeugen und mit committen.
+
+const { app, BrowserWindow } = require('electron');
+const path = require('path');
+const fs = require('fs');
+
+const ROOT = path.join(__dirname, '..');
+const SCENES = require(path.join(ROOT, 'src', 'shared', 'scenes.json'));
+const OUT = path.join(ROOT, 'src', 'wallpaper', 'previews');
+
+const SLOTS = { day: 13, dusk: 18.3, night: 22 };
+const SIZE = { width: 1280, height: 720 };   // grosses Bild (wird beim Anzeigen hochskaliert)
+const THUMB = { width: 320, height: 180 };   // Kachel im Panel
+const FRAMES = Number(process.env.PREVIEW_FRAMES || 16); // Bilder zum Aufaddieren (Kantenglaettung)
+
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('force-device-scale-factor', '1');
+
+function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+async function waitFor(win, expr, timeoutMs) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    try { if (await win.webContents.executeJavaScript(expr)) return true; } catch { /* Seite laedt noch */ }
+    await wait(250);
+  }
+  return false;
+}
+
+app.whenReady().then(async () => {
+  fs.mkdirSync(OUT, { recursive: true });
+  const only = process.argv.slice(2).filter((a) => !a.startsWith('-') && !a.endsWith('.js') && a !== '.');
+  const list = SCENES.filter((s) => s.ready && (only.length === 0 || only.includes(s.id)));
+
+  const win = new BrowserWindow({
+    ...SIZE,
+    useContentSize: true,
+    show: false,
+    frame: false,
+    paintWhenInitiallyHidden: true,
+    webPreferences: { backgroundThrottling: false },
+  });
+
+  for (const scene of list) {
+    for (const [slot, hour] of Object.entries(SLOTS)) {
+      const t0 = Date.now();
+      await win.loadFile(path.join(ROOT, 'src', 'wallpaper', 'index.html'), {
+        query: { scene: scene.id, hour: String(hour), scale: '0.75', adapt: '0', auto: '0', preview: '1', quality: 'high' },
+      });
+      const ok = await waitFor(win, `window.__lettoscape && window.__lettoscape.currentId() === '${scene.id}' && window.__lettoscape.frames() >= ${FRAMES}`, 10 * 60 * 1000);
+      if (!ok) { console.error(`  ${scene.id} ${slot}: Zeitueberschreitung, uebersprungen`); continue; }
+      const img = await win.webContents.capturePage();
+      if (img.isEmpty()) { console.error(`  ${scene.id} ${slot}: leeres Bild`); continue; }
+      const big = img.resize(SIZE);
+      fs.writeFileSync(path.join(OUT, `${scene.id}-${slot}.jpg`), big.toJPEG(84));
+      fs.writeFileSync(path.join(OUT, `${scene.id}-${slot}-thumb.jpg`), img.resize({ ...THUMB, quality: 'best' }).toJPEG(80));
+      console.log(`  ${scene.id.padEnd(13)} ${slot.padEnd(5)} ok (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+    }
+  }
+  app.quit();
+});

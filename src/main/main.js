@@ -13,6 +13,9 @@ const desktop = isWin ? require('./desktop-win') : null;
 
 if (isWin) app.setAppUserModelId('ch.flaco2009.lettoscape'); // noetig zum Anheften an die Taskleiste
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// Grosser Shader-Cache auf der Festplatte: einmal uebersetzte Szenen laden nach einem Neustart sofort
+app.commandLine.appendSwitch('gpu-program-cache-size-kb', String(128 * 1024));
+app.commandLine.appendSwitch('gpu-disk-cache-size-kb', String(256 * 1024));
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 
@@ -38,6 +41,12 @@ function loadSettings() {
   if (settings.settingsVersion < 3) {
     settings.pauseMode = saved.pauseOnFullscreen === false ? 'never' : 'desktop';
     settings.settingsVersion = 3;
+    saveSettings();
+  }
+  // v4: Vorladen ist jetzt getaktet und sparsam -> wieder an
+  if (settings.settingsVersion < 4) {
+    settings.preload = true;
+    settings.settingsVersion = 4;
     saveSettings();
   }
 }

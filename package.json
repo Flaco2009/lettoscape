@@ -1,7 +1,7 @@
 {
   "name": "lettoscape",
   "productName": "Lettoscape",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Cozy, immersive Live-Wallpaper mit Tag/Nacht, Wetter und Einstellungs-Panel.",
   "main": "src/main/main.js",
   "author": "Flaco2009",
@@ -10,7 +10,8 @@
     "start": "electron .",
     "preview": "npx --yes http-server src -p 8080 -o /wallpaper/index.html",
     "dist:win": "electron-builder --win nsis",
-    "dist:linux": "electron-builder --linux AppImage deb"
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "previews": "electron tools/make-previews.js"
   },
   "dependencies": {
     "koffi": "^2.16.3"

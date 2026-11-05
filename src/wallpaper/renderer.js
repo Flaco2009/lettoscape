@@ -11,6 +11,7 @@ const api = window.lettoscape; // aus preload.js (fehlt im normalen Browser)
 
 // Fallback fuer Tests im Browser: ?hour=20&weather=rain ...
 const params = new URLSearchParams(location.search);
+const previewMode = params.get('preview') === '1'; // Vorschaubilder erzeugen (tools/make-previews.js)
 let settings = {
   scene: params.get('scene') || 'bergsee',
   timeMode: params.has('hour') ? 'fixed' : 'real',
@@ -118,6 +119,7 @@ function pollJobs() {
       failed.set(id, log);
       console.error(`Szene ${id}: Shader-Fehler nach ${ms} ms`, log);
       report(id, 'error', { ms, error: log.slice(0, 400) });
+      if (!job.fg) scheduleWarmup(2000);
       if (id === wantedId) fail(`Szene "${scenes[id].name}" konnte nicht geladen werden.\n${log.slice(0, 300)}`);
       continue;
     }
@@ -131,6 +133,7 @@ function pollJobs() {
     retries.delete(id);
     console.info(`Szene ${id} bereit nach ${ms} ms`);
     report(id, 'ready', { ms });
+    if (!job.fg) scheduleWarmup(Math.max(800, Math.min(ms, 20000)));
     if (id === wantedId) activate(id);
   }
 }
@@ -138,22 +141,66 @@ function pollJobs() {
 // Kein Ladebildschirm: die alte Szene laeuft weiter, bis die neue fertig ist.
 // Dann brennt sich die neue Szene ein und wird dabei sichtbar immer schaerfer (siehe post.js).
 let buildT0 = -1e9;
+let stillId = null;
 function activate(id) {
   const c = cache.get(id);
   if (!c) return;
   scheduleWarmup();
-  if (id === currentId && prog) return;
+  if (id === currentId && prog && !(post && post.showingStill)) return;
   const fresh = !prog;
   prog = c.p;
   uni = c.uni;
   currentScene = scenes[id];
   currentId = id;
   errBox.style.display = 'none';
-  if (post) {
-    post.beginTransition(performance.now(), fresh);
-    buildT0 = performance.now();
+  if (post && !previewMode) {
+    const now = performance.now();
+    if (post.showingStill && stillId === id) {
+      // Vorschaubild war schon da -> unauffaellig ins Live-Bild uebergehen
+      post.endStill(now);
+      buildT0 = -1e9;
+    } else {
+      post.beginTransition(now, fresh && !post.showingStill);
+      post.dropStill();
+      buildT0 = now;
+    }
+    stillId = null;
     resize();
   }
+}
+
+// ---------- Vorschaubilder ----------
+// Fuer jede Szene liegen fertige Bilder (Tag/Abend/Nacht) bei. Klickt man eine Szene an, die noch
+// nicht kompiliert ist, erscheint sofort das Bild – die Szene wird live, sobald der Shader fertig ist.
+const previewImgs = new Map();
+function previewSlot(h) {
+  if (h >= 7.5 && h < 16.5) return 'day';
+  if ((h >= 16.5 && h < 20) || (h >= 5.5 && h < 7.5)) return 'dusk';
+  return 'night';
+}
+// Bilder fuer die aktuelle Tageszeit schon vorab laden, damit ein Klick sofort ein Bild zeigt
+let previewsWarm = false;
+function warmPreviews() {
+  if (previewsWarm || previewMode) return;
+  previewsWarm = true;
+  for (const id of Object.keys(scenes)) {
+    const url = `previews/${id}-${previewSlot(cur.hour)}.jpg`;
+    if (!previewImgs.has(url)) { const img = new Image(); img.src = url; previewImgs.set(url, img); }
+  }
+}
+function showPreview(id) {
+  if (previewMode || !post) return;
+  const url = `previews/${id}-${previewSlot(cur.hour)}.jpg`;
+  let img = previewImgs.get(url);
+  const go = () => {
+    if (wantedId !== id || cache.has(id) || gl.isContextLost()) return;
+    post.showStill(img, performance.now(), !prog && !post.showingStill);
+    stillId = id;
+    currentId = null;     // die alte Szene wird nicht mehr gerechnet
+  };
+  if (img && img.complete && img.naturalWidth) { go(); return; }
+  if (!img) { img = new Image(); previewImgs.set(url, img); img.src = url; }
+  img.addEventListener('load', go, { once: true });
 }
 
 function loadScene(id) {
@@ -164,19 +211,25 @@ function loadScene(id) {
   failed.delete(id);
   retries.delete(id);
   startJob(id, true);
+  if (!cache.has(id)) showPreview(id);
+  setTimeout(warmPreviews, 1500);
 }
 
-// Uebrige Szenen im Hintergrund vorbereiten, eine nach der anderen
-function scheduleWarmup() {
+// Uebrige Szenen im Hintergrund vorbereiten, eine nach der anderen.
+// Getaktet: nach jeder Szene so lange Pause, wie das Kompilieren gedauert hat (max. halbe Last).
+// Beim ersten Start dauert das etwas, danach kommen die Shader aus dem Cache auf der Festplatte
+// und alle Szenen sind nach wenigen Sekunden bereit.
+let lastBgMs = 0;
+function scheduleWarmup(delay = 3000) {
   clearTimeout(warmTimer);
-  if (!parallel) return;
+  if (!parallel || previewMode) return;
   warmTimer = setTimeout(() => {
-    if (jobs.size > 0 || paused || settings.preload === false) { scheduleWarmup(); return; }
+    if (settings.preload === false || settings.battery) { scheduleWarmup(30000); return; }
+    if (jobs.size > 0) { scheduleWarmup(1000); return; }
     const next = Object.keys(scenes).find((k) => !cache.has(k) && !failed.has(k));
     if (!next) return;
     startJob(next, false);
-    scheduleWarmup();
-  }, 15000);
+  }, delay);
 }
 
 if (!gl) fail('WebGL2 wird von deiner Grafikkarte/deinem Treiber nicht unterstuetzt.');
@@ -351,7 +404,7 @@ function applySettings(s) {
   ambience.update(settings);
 }
 
-let simTime = 0, last = performance.now(), lastDraw = 0, paused = false;
+let simTime = 0, last = performance.now(), lastDraw = 0, paused = false, totalFrames = 0;
 cur.hour = targetHour();
 
 function frame(now) {
@@ -394,6 +447,11 @@ function frame(now) {
 
   ambience.setWeather(cur.rain, cur.hour);
 
+  if (post && post.showingStill && !gl.isContextLost()) {
+    // Vorschaubild sichtbar: keine Szene rechnen, nur waehrend des Einbrennens ausgeben
+    if (post.inTransition()) post.presentOnly(now, settings.sharpen ?? 0.6);
+    return;
+  }
   if (!prog || !post || gl.isContextLost()) return;
   if (buildMul(now) !== lastBuild) resize();   // Aufbau-Stufe weiter
   const [iw, ih] = post.inSize;
@@ -427,6 +485,7 @@ function frame(now) {
   alpha = Math.max(alpha, cur.rain * 0.22, cur.snow * 0.18);
   if (lastBuild < 1) alpha = 0.5;
   post.finish(alpha, settings.sharpen ?? 0.6, now);
+  totalFrames++;
 }
 
 if (gl) {
@@ -462,4 +521,4 @@ if (api) {
 }
 
 // Fuer Screenshots/Tests
-window.__lettoscape = { applySettings, get settings() { return settings; }, cur, currentId: () => currentId, cached: () => [...cache.keys()] };
+window.__lettoscape = { applySettings, get settings() { return settings; }, cur, currentId: () => currentId, cached: () => [...cache.keys()], frames: () => totalFrames, showingStill: () => !!(post && post.showingStill) };

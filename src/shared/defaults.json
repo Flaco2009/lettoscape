@@ -21,9 +21,9 @@
   "cornerMenu": true,
   "panelPinned": false,
   "taskbarSync": true,
-  "preload": false,
+  "preload": true,
   "power": "balanced",
   "batterySaver": true,
-  "settingsVersion": 3,
+  "settingsVersion": 4,
   "pauseMode": "desktop"
 }

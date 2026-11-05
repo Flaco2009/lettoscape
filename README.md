@@ -44,6 +44,15 @@ npm install
 npm start
 ```
 
+## Vorschaubilder
+
+Nach Änderungen an einer Szene die Vorschaubilder neu erzeugen:
+
+```bash
+npm run previews            # alle Szenen
+npm run previews -- camping # nur eine
+```
+
 ## Installer bauen (Windows)
 
 ```bash

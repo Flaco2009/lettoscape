@@ -10,7 +10,10 @@ Cozy Live-Wallpaper (Electron, Windows zuerst, Linux später). Sprache im UI und
 - `src/shared/scenes.json` Szenenliste fürs Panel, `defaults.json` Standard-Einstellungen.
 
 ## Szenen laden
-`renderer.js` kompiliert asynchron (KHR_parallel_shader_compile), hält fertige Szenen im Cache, lädt die übrigen im Hintergrund vor (Einstellung `preload`) und meldet `loading/ready/error/lost` per `sceneStatus` an das Panel. Fehler in der Konsole des Wallpaper-Fensters: `Szene <id> bereit nach <ms> ms`.
+- `renderer.js` kompiliert asynchron (KHR_parallel_shader_compile), hält fertige Szenen im Cache und meldet `loading/ready/error/lost` per `sceneStatus` an das Panel. Konsole des Wallpaper-Fensters: `Szene <id> bereit nach <ms> ms`.
+- **Vorschaubilder** `src/wallpaper/previews/<id>-<day|dusk|night>.jpg` (+ `-thumb.jpg` fürs Panel): Klick auf eine noch nicht kompilierte Szene zeigt sofort das Bild (Einbrennen), sobald der Shader fertig ist, wird weich ins Live-Bild übergeblendet. **Nach jeder Änderung an einer Szene `npm run previews` (oder `npm run previews -- <id>`) ausführen und die Bilder committen.**
+- Vorladen (`preload`, Standard an): alle Szenen nacheinander im Hintergrund, nach jeder Szene so lange Pause wie das Kompilieren dauerte, nicht im Akkubetrieb.
+- Shader-Disk-Cache vergrößert (`gpu-program-cache-size-kb` in `main.js`): nach dem ersten Kompilieren sind Szenen auch nach Neustart sofort da.
 
 ## Leistung / Wärme
 - Leistungsstufen `power` = eco | balanced | beauty | custom (Werte in `main.js` `POWER`/`BUDGET` und im Panel `PRESETS`). Im Akkubetrieb mit `batterySaver` erzwingt `wallSettings()` die Stufe eco.
