@@ -16,7 +16,7 @@
     leuchtturm:   ['#0e1a26', '#2e5873', '#f5d38a'],
   };
 
-  const { settings: initial, scenes, version, platform, sceneStatus: initialStatus } = await api.getSettings();
+  const { settings: initial, scenes, version, platform, sceneStatus: initialStatus, power: initialPower } = await api.getSettings();
   const status = { ...(initialStatus || {}) };
   let s = initial;
 
@@ -64,6 +64,51 @@
     });
   });
 
+  // ---- Leistungsstufen ----
+  const PRESETS = {
+    eco:      { fps: 20, renderScale: 0.45, quality: 'low' },
+    balanced: { fps: 24, renderScale: 0.6,  quality: 'high' },
+    beauty:   { fps: 30, renderScale: 0.85, quality: 'high' },
+  };
+  const POWER_HINT = {
+    eco: 'Kühl und leise. Ideal für Laptops.',
+    balanced: 'Guter Kompromiss aus Bild und Wärme.',
+    beauty: 'Volle Pracht, braucht eine starke Grafikkarte.',
+    custom: 'Eigene Einstellungen (siehe Erweitert).',
+  };
+  document.querySelectorAll('#power button').forEach((b) => {
+    b.addEventListener('click', () => set({ power: b.dataset.power, ...PRESETS[b.dataset.power] }));
+  });
+  // Erweiterte Regler -> eigene Stufe
+  document.querySelectorAll('.adv .seg button, .adv input').forEach((el) => {
+    el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'click', () => { if (s.power !== 'custom') set({ power: 'custom' }); });
+  });
+
+  let power = initialPower || {};
+  let stats = null;
+  function renderLive() {
+    const t = document.getElementById('liveText');
+    const box = document.getElementById('live');
+    box.classList.remove('warm', 'hot', 'idle');
+    if (power.pausedAll || (stats && stats.paused)) {
+      box.classList.add('idle');
+      const why = { gesperrt: 'Bildschirm gesperrt', abwesend: 'du bist weg', verdeckt: 'Desktop verdeckt', vollbild: 'Vollbild-App' }[power.reason] || 'verdeckt';
+      t.textContent = 'Pausiert (' + why + ') · 0 % GPU';
+      return;
+    }
+    if (!stats) { t.textContent = 'Messe …'; return; }
+    let txt = stats.fps + ' FPS · ' + stats.w + '×' + stats.h;
+    if (stats.load !== null && stats.load !== undefined) {
+      txt += ' · GPU ~' + stats.load + ' %';
+      if (stats.load > stats.budget * 1.3) box.classList.add('hot');
+      else if (stats.load > stats.budget * 0.9) box.classList.add('warm');
+    }
+    if (stats.battery) txt += ' · Akku-Modus';
+    t.textContent = txt;
+  }
+  if (api.onRenderStats) api.onRenderStats((st) => { stats = st; renderLive(); });
+  if (api.onPower) api.onPower((p) => { power = p; renderLive(); render(); });
+
   // ---- Toggles ----
   document.querySelectorAll('.toggle input').forEach((inp) => {
     inp.addEventListener('change', () => set({ [inp.dataset.key]: inp.checked }));
@@ -88,6 +133,8 @@
     });
     document.querySelectorAll('.toggle input').forEach((inp) => { inp.checked = !!s[inp.dataset.key]; });
     document.getElementById('hourRow').classList.toggle('disabled', s.timeMode !== 'fixed');
+    document.querySelectorAll('#power button').forEach((b) => b.classList.toggle('on', b.dataset.power === s.power));
+    document.getElementById('powerHint').textContent = (POWER_HINT[s.power] || '') + (power && power.battery ? ' Gerade im Akku-Modus.' : '');
     const pin = document.getElementById('pin');
     pin.classList.toggle('on', !!s.panelPinned);
     pin.setAttribute('aria-pressed', String(!!s.panelPinned));
@@ -139,8 +186,8 @@
   function mockApi() {
     const defaults = {
       scene: 'bergsee', timeMode: 'real', hour: 20, weather: 'clear', fog: 0.45, clouds: 0.35, brightness: 1,
-      speed: 1, fps: 30, renderScale: 0.75, quality: 'high', autoPerformance: true, parallax: true, sound: false, volume: 0.5,
-      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: true, taskbarSync: true,
+      speed: 1, fps: 30, renderScale: 0.75, quality: 'high', parallax: true, sound: false, volume: 0.5,
+      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: false, power: 'balanced', batterySaver: true, autoPerformance: true, taskbarSync: true,
     };
     let st = { ...defaults };
     const names = ['Bergsee', 'Camping-Platz', 'Feuerwachturm', 'Verlassenes Schloss', 'Waldlichtung', 'Jägerhütte', 'Alte Mühle am Bach', 'Verlassener Bahnhof', 'Waldrand-Kapelle', 'Leuchtturm an der Küste'];

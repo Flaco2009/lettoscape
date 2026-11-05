@@ -21,8 +21,8 @@ let settings = {
   speed: 1,
   fps: 30,
   renderScale: parseFloat(params.get('scale') || '0.75'),
-  quality: params.get('quality') || 'high',
   autoPerformance: params.get('auto') !== '0',
+  quality: params.get('quality') || 'high',
   parallax: true,
   sound: false,
   volume: 0.5,
@@ -63,6 +63,7 @@ const parallel = gl && gl.getExtension('KHR_parallel_shader_compile');
 const cache = new Map();   // id -> { p, uni }
 const jobs = new Map();    // id -> { p, vs, fs, t0, fg }
 const failed = new Map();  // id -> Fehlertext
+const retries = new Map(); // id -> Anzahl Neuversuche (bei voruebergehenden GPU-Fehlern)
 let wantedId = null;
 let warmTimer = null;
 let loadingHint = null;
@@ -98,11 +99,22 @@ function pollJobs() {
     jobs.delete(id);
     const ms = Math.round(performance.now() - job.t0);
     const { p, vs, fs } = job;
+    if (gl.isContextLost()) continue; // wird nach dem Wiederherstellen neu geladen
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-      const log = (gl.getShaderInfoLog(fs) || gl.getProgramInfoLog(p) || 'unbekannter Fehler').trim();
+      const raw = (gl.getShaderInfoLog(fs) || gl.getProgramInfoLog(p) || '').trim();
       gl.deleteProgram(p);
       gl.deleteShader(vs);
       gl.deleteShader(fs);
+      // Ohne Fehlertext war es meist ein voruebergehender GPU-Fehler -> spaeter nochmal versuchen
+      const n = retries.get(id) || 0;
+      if ((!raw || /context|lost|timeout|out of memory/i.test(raw)) && n < 3) {
+        retries.set(id, n + 1);
+        console.warn(`Szene ${id}: voruebergehender GPU-Fehler, neuer Versuch ${n + 1}/3`);
+        report(id, 'loading', { background: id !== wantedId, retry: n + 1 });
+        setTimeout(() => { if (!gl.isContextLost()) startJob(id, id === wantedId); }, 1500 * (n + 1));
+        continue;
+      }
+      const log = raw || 'unbekannter GPU-Fehler';
       failed.set(id, log);
       console.error(`Szene ${id}: Shader-Fehler nach ${ms} ms`, log);
       report(id, 'error', { ms, error: log.slice(0, 400) });
@@ -116,6 +128,7 @@ function pollJobs() {
     const u = {};
     for (const n of UNIFORMS) u[n] = gl.getUniformLocation(p, n);
     cache.set(id, { p, uni: u });
+    retries.delete(id);
     console.info(`Szene ${id} bereit nach ${ms} ms`);
     report(id, 'ready', { ms });
     if (id === wantedId) activate(id);
@@ -149,25 +162,23 @@ function loadScene(id) {
   if (!scenes[id]) id = 'bergsee';
   wantedId = id;
   if (cache.has(id)) { activate(id); return; }
-  if (failed.has(id)) {
-    report(id, 'error', { error: failed.get(id).slice(0, 400) });
-    if (!prog) fail(`Szene "${scenes[id].name}" konnte nicht geladen werden.`);
-    return;
-  }
+  // ausdruecklich gewaehlt: auch nach einem frueheren Fehler nochmal versuchen
+  failed.delete(id);
+  retries.delete(id);
   startJob(id, true);
 }
 
 // Uebrige Szenen im Hintergrund vorbereiten, eine nach der anderen
 function scheduleWarmup() {
   clearTimeout(warmTimer);
-  if (!parallel || settings.preload === false) return;
+  if (!parallel) return;
   warmTimer = setTimeout(() => {
-    if (jobs.size > 0) { scheduleWarmup(); return; }
+    if (jobs.size > 0 || paused || settings.preload === false) { scheduleWarmup(); return; }
     const next = Object.keys(scenes).find((k) => !cache.has(k) && !failed.has(k));
     if (!next) return;
     startJob(next, false);
     scheduleWarmup();
-  }, 8000);
+  }, 15000);
 }
 
 function showHint(name) {
@@ -212,61 +223,99 @@ function initGeometry() {
 }
 if (gl) initGeometry();
 
-// ---------- Adaptive Performance ----------
-// Lettoscape soll auf schwacher wie starker Hardware laufen. Dazu wird die echte Zeit zwischen
-// angezeigten Frames gemessen (unabhaengig vom eigenen FPS-Limit): kommt die GPU nicht mehr mit,
-// werden requestAnimationFrame-Callbacks spaeter aufgerufen. Haelt das laenger an, schraubt Lettoscape
-// Aufloesung/Qualitaet/FPS schrittweise runter - und wieder hoch, sobald es sich erholt hat.
-const PERF_STEPS = [
-  { scale: 1,    quality: null,  fpsCap: Infinity },
-  { scale: 0.75, quality: null,  fpsCap: Infinity },
-  { scale: 0.55, quality: 'low', fpsCap: Infinity },
-  { scale: 0.4,  quality: 'low', fpsCap: 18 },
-];
-let perfLevel = 0;
-let perfEma = 1000 / 60;
-let perfLastTs = 0;
-let perfBadStreak = 0, perfGoodStreak = 0, perfLastCheck = 0;
-
-function resetAdaptivePerf() {
-  perfLevel = 0;
-  perfEma = 1000 / 60;
-  perfBadStreak = 0;
-  perfGoodStreak = 0;
-  perfLastCheck = 0;
+// ---------- Aufloesung + GPU-Budget ----------
+// Gerendert wird in geringerer Aufloesung und hochskaliert (die Szenen sind weich, das faellt kaum auf).
+// Zusaetzlich:
+//  - feste Obergrenze fuer die Pixelzahl je Leistungsstufe (4K-Laptops rechnen sonst 4x so viel)
+//  - dynScale: wird automatisch kleiner, wenn das Wallpaper mehr GPU-Zeit braucht als erlaubt
+let dynScale = 1;
+let fpsLimit = 60;   // wird gesenkt, wenn die Aufloesung schon am Minimum ist
+const MIN_DYN = 0.55;
+function maxPixels() {
+  const b = settings.gpuBudget ?? 0.25;
+  return b <= 0.15 ? 0.45e6 : b <= 0.3 ? 0.9e6 : b <= 0.45 ? 1.4e6 : 2.1e6;
 }
-
-function perfTick(now) {
-  if (perfLastTs) perfEma += (Math.min(now - perfLastTs, 250) - perfEma) * 0.08;
-  perfLastTs = now;
-  if (!settings.autoPerformance) return;
-  if (!perfLastCheck) { perfLastCheck = now; return; }
-  if (now - perfLastCheck < 2500) return;
-  perfLastCheck = now;
-  const achievedFps = 1000 / perfEma;
-  if (achievedFps < 24) {
-    perfGoodStreak = 0;
-    if (++perfBadStreak >= 1 && perfLevel < PERF_STEPS.length - 1) { perfLevel++; perfBadStreak = 0; resize(); }
-  } else if (achievedFps > 50) {
-    perfBadStreak = 0;
-    if (++perfGoodStreak >= 3 && perfLevel > 0) { perfLevel--; perfGoodStreak = 0; resize(); }
-  } else {
-    perfBadStreak = 0; perfGoodStreak = 0;
-  }
-}
-
-function effectiveRenderScale() { return settings.renderScale * PERF_STEPS[perfLevel].scale; }
-function effectiveQuality() { return PERF_STEPS[perfLevel].quality || settings.quality; }
-function effectiveFps() { return Math.min(settings.fps, PERF_STEPS[perfLevel].fpsCap); }
-
 function resize() {
-  const s = Math.min(Math.max(effectiveRenderScale(), 0.3), 1.5);
-  const w = Math.round(window.innerWidth * devicePixelRatio * s);
-  const h = Math.round(window.innerHeight * devicePixelRatio * s);
+  const base = Math.min(Math.max(settings.renderScale, 0.25), 1.5);
+  let w = window.innerWidth * devicePixelRatio * base;
+  let h = window.innerHeight * devicePixelRatio * base;
+  const cap = Math.sqrt(maxPixels() / Math.max(w * h, 1));
+  const k = Math.min(1, cap) * dynScale;
+  w = Math.max(160, Math.round(w * k));
+  h = Math.max(90, Math.round(h * k));
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width = w;
     canvas.height = h;
   }
+}
+
+// GPU-Zeit messen (wenn der Treiber es kann)
+const timer = gl && gl.getExtension('EXT_disjoint_timer_query_webgl2');
+const queries = [];
+let gpuMs = 0, gpuSamples = 0, frames = 0, statT0 = performance.now(), lastAdapt = performance.now();
+function pollQueries() {
+  while (queries.length) {
+    const q = queries[0];
+    if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+    queries.shift();
+    const disjoint = gl.getParameter(timer.GPU_DISJOINT_EXT);
+    if (!disjoint) {
+      const ms = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6;
+      gpuMs = gpuSamples ? gpuMs * 0.8 + ms * 0.2 : ms;
+      gpuSamples++;
+    }
+    gl.deleteQuery(q);
+  }
+}
+
+const noAdapt = params.get('adapt') === '0'; // fuer Tests/Screenshots: Aufloesung nicht regeln
+function adapt(now) {
+  if (noAdapt || now - lastAdapt < 2500) return;
+  if (settings.autoPerformance === false) {
+    // Automatik aus: feste Werte aus den Einstellungen
+    if (dynScale !== 1 || fpsLimit !== 60) { dynScale = 1; fpsLimit = 60; resize(); }
+  }
+  const secs = (now - statT0) / 1000;
+  const fps = frames / Math.max(secs, 0.001);
+  lastAdapt = now;
+  const target = Math.max(5, settings.fps);
+  if (paused) {
+    if (api && api.renderStats) api.renderStats({ paused: true, battery: !!settings.battery });
+    frames = 0; statT0 = now;
+    return;
+  }
+  const budget = settings.gpuBudget ?? 0.25;
+  let load = null;
+  let next = dynScale;
+  const auto = settings.autoPerformance !== false;
+  if (!auto) {
+    if (timer && gpuSamples > 2) load = (gpuMs * Math.max(fps, 1)) / 1000;  // nur messen und anzeigen
+  } else if (timer && gpuSamples > 2) {
+    load = (gpuMs * Math.max(fps, 1)) / 1000;      // Anteil der GPU-Zeit
+    const ratio = budget / Math.max(load, 1e-4);
+    if (ratio < 0.85) {   // ueber Budget
+      if (dynScale <= MIN_DYN + 1e-3) fpsLimit = Math.max(12, Math.round(Math.min(fpsLimit, target) * Math.max(0.7, ratio)));
+      else next = dynScale * Math.max(0.7, Math.sqrt(ratio));
+    } else if (ratio > 1.4) {
+      if (fpsLimit < target) fpsLimit = Math.min(target, Math.round(fpsLimit * 1.15) + 1);
+      else next = dynScale * Math.min(1.12, Math.sqrt(ratio));
+    }
+  } else if (fps < Math.min(target, fpsLimit) * 0.75) {
+    // schafft die Bildrate nicht -> GPU am Anschlag
+    if (dynScale <= MIN_DYN + 1e-3) fpsLimit = Math.max(12, Math.round(Math.min(fpsLimit, target) * 0.8));
+    else next = dynScale * 0.85;
+  } else if (fps > target * 0.95) {
+    next = dynScale * 1.04;
+  }
+  next = Math.min(1, Math.max(MIN_DYN, Math.round(next * 20) / 20));
+  if (next !== dynScale) { dynScale = next; resize(); }
+  if (api && api.renderStats) {
+    api.renderStats({ fps: Math.round(fps), target: Math.min(target, fpsLimit), w: canvas.width, h: canvas.height,
+      load: load === null ? null : Math.round(load * 100), budget: Math.round(budget * 100),
+      gpuMs: timer && gpuSamples ? Math.round(gpuMs * 10) / 10 : null, battery: !!settings.battery, paused });
+  }
+  frames = 0;
+  statT0 = now;
 }
 window.addEventListener('resize', resize);
 
@@ -285,9 +334,13 @@ function lerp(a, b, k) { return a + (b - a) * k; }
 const ambience = new Ambience();
 
 function applySettings(s) {
-  const sceneChanged = s.scene && s.scene !== settings.scene;
+  // neue Leistungsstufe / Akku-Wechsel: Regelung neu beginnen
+  if (['fps', 'renderScale', 'gpuBudget', 'quality', 'autoPerformance', 'scene'].some((k) => k in s && s[k] !== settings[k])) {
+    dynScale = 1;
+    fpsLimit = 60;
+    gpuSamples = 0;
+  }
   settings = { ...settings, ...s };
-  if (sceneChanged) resetAdaptivePerf();
   loadScene(settings.scene);
   resize();
   ambience.update(settings);
@@ -297,11 +350,20 @@ let simTime = 0, last = performance.now(), lastDraw = 0, paused = false;
 cur.hour = targetHour();
 
 function frame(now) {
+  if (paused) {
+    // pausiert: nur selten aufwachen (Szenen fertig kompilieren, Status melden)
+    if (gl && !gl.isContextLost()) { pollJobs(); adapt(now); }
+    last = now;
+    setTimeout(() => requestAnimationFrame(frame), 500);
+    return;
+  }
   requestAnimationFrame(frame);
-  if (gl && !gl.isContextLost()) pollJobs();
-  if (paused) { last = now; perfLastTs = 0; return; }
-  perfTick(now);
-  const minDt = 1000 / Math.max(5, effectiveFps());
+  if (gl && !gl.isContextLost()) {
+    pollJobs();
+    if (timer) pollQueries();
+    adapt(now);
+  }
+  const minDt = 1000 / Math.max(5, Math.min(settings.fps, fpsLimit));
   if (now - lastDraw < minDt - 1) return;
   lastDraw = now;
 
@@ -339,8 +401,15 @@ function frame(now) {
   gl.uniform1f(uni.uClouds, cur.clouds);
   gl.uniform1f(uni.uBright, settings.brightness);
   gl.uniform2f(uni.uMouse, mouse.x, mouse.y);
-  gl.uniform1f(uni.uQuality, effectiveQuality() === 'high' ? 1 : 0);
+  gl.uniform1f(uni.uQuality, settings.quality === 'high' ? 1 : 0);
+  let q = null;
+  if (timer && queries.length < 3 && frames % 3 === 0) {
+    q = gl.createQuery();
+    gl.beginQuery(timer.TIME_ELAPSED_EXT, q);
+  }
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (q) { gl.endQuery(timer.TIME_ELAPSED_EXT); queries.push(q); }
+  frames++;
 }
 
 if (gl) {
@@ -354,7 +423,11 @@ if (gl) {
 if (api) {
   api.onSettings((s) => applySettings(s));
   api.onCursor(({ x, y }) => { mouse.tx = x; mouse.ty = y; });
-  api.onPause((p) => { paused = p; ambience.update({ ...settings, sound: settings.sound && !p }); });
+  api.onPause((p) => {
+    paused = p;
+    ambience.update({ ...settings, sound: settings.sound && !p });
+    canvas.style.visibility = p ? 'hidden' : 'visible';  // Compositor muss nichts mehr zeichnen
+  });
   api.ready();
 } else {
   window.addEventListener('mousemove', (e) => {
@@ -364,11 +437,4 @@ if (api) {
 }
 
 // Fuer Screenshots/Tests
-window.__lettoscape = {
-  applySettings,
-  get settings() { return settings; },
-  cur,
-  currentId: () => currentId,
-  cached: () => [...cache.keys()],
-  perf: () => ({ level: perfLevel, achievedFps: Math.round(1000 / perfEma), scale: effectiveRenderScale(), quality: effectiveQuality(), fps: effectiveFps() }),
-};
+window.__lettoscape = { applySettings, get settings() { return settings; }, cur, currentId: () => currentId, cached: () => [...cache.keys()] };

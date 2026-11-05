@@ -70,19 +70,32 @@
 
     <section>
       <h2>Leistung</h2>
-      <div class="seg" data-key="fps" data-num>
-        <button data-val="15">15 FPS</button>
-        <button data-val="30">30 FPS</button>
-        <button data-val="60">60 FPS</button>
+      <div class="seg power" id="power">
+        <button data-power="eco">🍃 Leise</button>
+        <button data-power="balanced">⚖ Ausgewogen</button>
+        <button data-power="beauty">✨ Schön</button>
       </div>
-      <label class="row"><span>Auflösung</span><input type="range" min="0.4" max="1" step="0.05" data-key="renderScale"><output data-for="renderScale" data-fmt="pct"></output></label>
-      <div class="seg" data-key="quality">
-        <button data-val="low">Sparsam</button>
-        <button data-val="high">Schön</button>
-      </div>
+      <p class="hint" id="powerHint"></p>
+      <div class="live" id="live"><span class="dot"></span><span id="liveText">…</span></div>
       <label class="toggle"><span>Automatisch an die Hardware anpassen</span><input type="checkbox" data-key="autoPerformance"><i></i></label>
-      <p class="hint">Senkt Auflösung/Qualität selbsttätig, wenn die Grafikkarte nicht mitkommt, und fährt wieder hoch, sobald es wieder flüssig läuft.</p>
-      <label class="toggle"><span>Pause bei Vollbild-Apps</span><input type="checkbox" data-key="pauseOnFullscreen"><i></i></label>
+      <p class="hint">Senkt Auflösung und Bildrate selbst, wenn die Grafikkarte zu viel zu tun hat oder nicht mitkommt, und fährt wieder hoch, wenn Luft ist.</p>
+      <label class="toggle"><span>Im Akkubetrieb automatisch leise</span><input type="checkbox" data-key="batterySaver"><i></i></label>
+      <label class="toggle"><span>Pausieren, wenn Fenster den Desktop verdecken</span><input type="checkbox" data-key="pauseOnFullscreen"><i></i></label>
+      <details class="adv">
+        <summary>Erweitert</summary>
+        <div class="seg" data-key="fps" data-num>
+          <button data-val="15">15 FPS</button>
+          <button data-val="20">20</button>
+          <button data-val="24">24</button>
+          <button data-val="30">30</button>
+          <button data-val="60">60</button>
+        </div>
+        <label class="row"><span>Auflösung</span><input type="range" min="0.3" max="1" step="0.05" data-key="renderScale"><output data-for="renderScale" data-fmt="pct"></output></label>
+        <div class="seg" data-key="quality">
+          <button data-val="low">Weniger Details</button>
+          <button data-val="high">Alle Details</button>
+        </div>
+      </details>
       <label class="toggle"><span>Szenen im Hintergrund vorladen</span><input type="checkbox" data-key="preload"><i></i></label>
       <label class="toggle"><span>Taskleiste an Szene anpassen</span><input type="checkbox" data-key="taskbarSync"><i></i></label>
     </section>

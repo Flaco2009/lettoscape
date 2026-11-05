@@ -7,8 +7,8 @@
   "clouds": 0.35,
   "brightness": 1.0,
   "speed": 1.0,
-  "fps": 30,
-  "renderScale": 0.75,
+  "fps": 24,
+  "renderScale": 0.6,
   "quality": "high",
   "autoPerformance": true,
   "parallax": true,
@@ -21,5 +21,8 @@
   "cornerMenu": true,
   "panelPinned": false,
   "taskbarSync": true,
-  "preload": true
+  "preload": false,
+  "power": "balanced",
+  "batterySaver": true,
+  "settingsVersion": 2
 }

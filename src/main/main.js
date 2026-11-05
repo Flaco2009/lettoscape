@@ -26,11 +26,44 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS };
 
 function loadSettings() {
-  try {
-    settings = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) };
-  } catch {
-    settings = { ...DEFAULTS };
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')); } catch { saved = {}; }
+  settings = { ...DEFAULTS, ...saved };
+  // v2: alte Einstellungen waren viel zu hungrig fuer Laptops -> Leistung neu setzen
+  if (!saved.settingsVersion || saved.settingsVersion < 2) {
+    Object.assign(settings, POWER.balanced, { power: 'balanced', preload: false, settingsVersion: 2 });
+    saveSettings();
   }
+}
+
+// Leistungsstufen. gpuBudget = Anteil der GPU-Zeit, den das Wallpaper hoechstens nutzen soll.
+const POWER = {
+  eco:      { fps: 20, renderScale: 0.45, quality: 'low' },
+  balanced: { fps: 24, renderScale: 0.6,  quality: 'high' },
+  beauty:   { fps: 30, renderScale: 0.85, quality: 'high' },
+};
+const BUDGET = { eco: 0.12, balanced: 0.25, beauty: 0.6, custom: 0.4 };
+
+let onBattery = false;
+function batteryMode() { return !!(onBattery && settings.batterySaver); }
+
+/** Einstellungen, wie sie das Wallpaper tatsaechlich nutzt (Akku-Modus beruecksichtigt). */
+function wallSettings() {
+  const w = { ...settings, gpuBudget: BUDGET[settings.power] ?? 0.4, battery: batteryMode() };
+  if (w.battery) {
+    w.fps = Math.min(w.fps, POWER.eco.fps);
+    w.renderScale = Math.min(w.renderScale, POWER.eco.renderScale);
+    w.quality = 'low';
+    w.gpuBudget = Math.min(w.gpuBudget, BUDGET.eco);
+    w.preload = false;
+  }
+  return w;
+}
+
+function sendSettings() {
+  const w = wallSettings();
+  for (const win of wallpapers.values()) if (!win.isDestroyed()) win.webContents.send('settings', w);
+  if (panel && !panel.isDestroyed()) panel.webContents.send('settings', settings);
 }
 
 let saveTimer = null;
@@ -161,13 +194,15 @@ function startTaskbarSync() {
 }
 
 // ---------- Maus-Parallax + Vollbild-Pause ----------
-let cursorTimer = null, pauseTimer = null, paused = false;
+let cursorTimer = null, pauseTimer = null, paused = false, lastCursor = null;
 
 function startLoops() {
   clearInterval(cursorTimer);
   cursorTimer = setInterval(() => {
     if (!settings.parallax || paused) return;
     const p = screen.getCursorScreenPoint();
+    if (lastCursor && lastCursor.x === p.x && lastCursor.y === p.y) return; // Maus steht still
+    lastCursor = p;
     for (const [id, w] of wallpapers) {
       const d = screen.getAllDisplays().find((x) => x.id === id);
       if (!d || w.isDestroyed()) continue;
@@ -178,19 +213,52 @@ function startLoops() {
   }, 33);
 
   clearInterval(pauseTimer);
-  if (!isWin) return;
-  pauseTimer = setInterval(() => {
-    let p = false;
-    if (settings.pauseOnFullscreen) {
-      const ds = screen.getAllDisplays().map((d) => screen.dipToScreenRect(null, d.bounds));
-      try { p = desktop.isForegroundFullscreen(ds); } catch { p = false; }
+  pauseTimer = setInterval(updatePause, 1500);
+}
+
+// Pausieren, wenn man das Wallpaper nicht sieht:
+//  - Bildschirm gesperrt / Standby / laengere Abwesenheit
+//  - Fenster maximiert oder im Vollbild (pro Bildschirm)
+let locked = false;
+let lastPause = [];
+let pauseReason = '';
+function updatePause() {
+  const displays = [...wallpapers.keys()].map((id) => screen.getAllDisplays().find((d) => d.id === id)).filter(Boolean);
+  let covered = displays.map(() => false);
+  let reason = '';
+  if (locked) { covered = covered.map(() => true); reason = 'gesperrt'; }
+  else if (powerMonitor.getSystemIdleTime() > 15 * 60) { covered = covered.map(() => true); reason = 'abwesend'; }
+  else if (isWin && settings.pauseOnFullscreen) {
+    try {
+      covered = desktop.coveredDisplays(displays.map((d) => screen.dipToScreenRect(null, d.workArea)));
+      if (covered.some(Boolean)) reason = 'verdeckt';
+    } catch (e) {
+      // Fallback: alte Vollbild-Pruefung
+      try {
+        const full = desktop.isForegroundFullscreen(displays.map((d) => screen.dipToScreenRect(null, d.bounds)));
+        covered = displays.map(() => full);
+        if (full) reason = 'vollbild';
+      } catch { covered = displays.map(() => false); }
     }
-    if (p !== paused) {
-      paused = p;
-      for (const w of wallpapers.values()) if (!w.isDestroyed()) w.webContents.send('pause', paused);
-      if (corner && !corner.isDestroyed()) { if (paused) corner.hide(); else corner.showInactive(); }
-    }
-  }, 1500);
+  }
+  displays.forEach((d, i) => {
+    if (lastPause[i] === covered[i]) return;
+    const w = wallpapers.get(d.id);
+    if (w && !w.isDestroyed()) w.webContents.send('pause', covered[i]);
+  });
+  const changed = covered.length !== lastPause.length || covered.some((c, i) => c !== lastPause[i]);
+  lastPause = covered;
+  paused = covered.length > 0 && covered.every(Boolean);
+  pauseReason = reason;
+  // Menue-Ecke nur bei echtem Vollbild/gesperrt ausblenden (bei maximierten Fenstern bleibt sie)
+  if (corner && !corner.isDestroyed()) {
+    const hide = locked || (isWin && settings.pauseOnFullscreen && (() => {
+      try { return desktop.isForegroundFullscreen(displays.map((d) => screen.dipToScreenRect(null, d.bounds))); } catch { return false; }
+    })());
+    if (hide && corner.isVisible()) corner.hide();
+    else if (!hide && !corner.isVisible()) corner.showInactive();
+  }
+  if (changed) sendPower();
 }
 
 // ---------- Panel ----------
@@ -347,7 +415,7 @@ function updateSettings(patch) {
     }
   }
   if ('taskbarSync' in patch && patch.taskbarSync !== before.taskbarSync) startTaskbarSync();
-  broadcast('settings', settings);
+  sendSettings();
   return settings;
 }
 
@@ -363,10 +431,17 @@ ipcMain.on('scene-status', (_e, st) => {
   if (st.state === 'error') console.warn(`Szene ${st.id}: ${st.error}`);
 });
 
-ipcMain.handle('get-settings', () => ({ settings, scenes: SCENES, version: app.getVersion(), platform: process.platform, sceneStatus }));
+ipcMain.handle('get-settings', () => ({ settings, scenes: SCENES, version: app.getVersion(), platform: process.platform, sceneStatus, power: powerInfo() }));
+
+// Live-Werte vom Wallpaper (FPS, Aufloesung, GPU-Last) fuers Panel
+ipcMain.on('render-stats', (_e, st) => {
+  if (panel && !panel.isDestroyed() && panel.isVisible()) panel.webContents.send('render-stats', st);
+});
+function powerInfo() { return { onBattery, battery: batteryMode(), pausedAll: lastPause.length > 0 && lastPause.every(Boolean), reason: pauseReason }; }
+function sendPower() { if (panel && !panel.isDestroyed()) panel.webContents.send('power', powerInfo()); }
 ipcMain.handle('set-settings', (_e, patch) => updateSettings(patch));
 ipcMain.handle('reset-settings', () => updateSettings({ ...DEFAULTS }));
-ipcMain.on('wallpaper-ready', (e) => e.sender.send('settings', settings));
+ipcMain.on('wallpaper-ready', (e) => e.sender.send('settings', wallSettings()));
 ipcMain.on('hide-panel', () => closePanel());
 ipcMain.on('open-panel', (_e, anchor) => togglePanel(anchor));
 ipcMain.on('quit', () => app.quit());
@@ -386,7 +461,15 @@ app.whenReady().then(() => {
   screen.on('display-metrics-changed', rebuildWallpapers);
   for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, createCorner);
   // Nach Standby/Explorer-Neustart neu einhaengen
-  powerMonitor.on('resume', () => setTimeout(rebuildWallpapers, 2000));
+  powerMonitor.on('resume', () => { locked = false; setTimeout(rebuildWallpapers, 2000); });
+  // Akku: automatisch sparen
+  try { onBattery = powerMonitor.isOnBatteryPower(); } catch { onBattery = false; }
+  powerMonitor.on('on-battery', () => { onBattery = true; sendSettings(); sendPower(); });
+  powerMonitor.on('on-ac', () => { onBattery = false; sendSettings(); sendPower(); });
+  powerMonitor.on('lock-screen', () => { locked = true; updatePause(); });
+  powerMonitor.on('unlock-screen', () => { locked = false; updatePause(); });
+  powerMonitor.on('suspend', () => { locked = true; updatePause(); });
+  sendSettings();
 
   // Beim normalen Start (z.B. Klick auf das angeheftete Icon) Panel zeigen,
   // beim Autostart nur still in die Taskleiste legen.

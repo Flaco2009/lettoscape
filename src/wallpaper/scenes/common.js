@@ -73,6 +73,7 @@ float ridged(vec2 p, int oct) {
 // Ferne Berge als Kulisse (fuer Szenen mit Blick in die Weite)
 float farMountains(vec2 p, float start, float height) {
   float m = smoothstep(start, start * 2.2, length(p));
+  if (m <= 0.0) return 0.0;   // in der Naehe gar nicht erst rechnen
   return m * ridged(p * 0.0045 + vec2(1.3, 7.1), 6) * height;
 }
 
@@ -222,7 +223,7 @@ vec3 pointGlow(vec3 ro, vec3 rd, float t, vec3 lp, vec3 lc, float size) {
 // ---------- Wind ----------
 const vec2 WIND = vec2(0.94, 0.34);
 // Boeen ziehen als Wellen ueber die Landschaft
-float gustAt(vec2 p) { return fbm(p * 0.05 - WIND * uTime * 0.35, 3); }
+float gustAt(vec2 p) { return 0.5 + 0.5 * sin(dot(p, WIND) * 0.09 - uTime * 0.9) * sin(dot(p, vec2(-WIND.y, WIND.x)) * 0.05 + uTime * 0.3); }
 vec2 windSway(vec2 c) {
   float ph = hash(c) * 6.2832;
   float gust = gustAt(c);
@@ -284,10 +285,16 @@ const core = `
 #ifndef FISH
 #define FISH 1.0          // springende Fische (Ringe im Wasser)
 #endif
+#ifndef MAX_H
+#define MAX_H 320.0       // hoechster Punkt der Landschaft (Strahlen darueber = Himmel)
+#endif
+#define TREE_TOP 7.2      // hoechster Baum ueber Boden
 
 // ---------- Wald ----------
+float gTreeMask = 0.0; // Waldanteil am zuletzt geprueften Punkt (fuer die Schrittweite)
 float treeH(vec2 p, float g) {
   float m = forestMask(p, g);
+  gTreeMask = m;
   if (m < 0.02) return 0.0;
   vec2 cs = vec2(1.8);
   vec2 c = floor(p / cs);
@@ -309,27 +316,48 @@ float treeH(vec2 p, float g) {
   return max(0.0, th * k + fluff);
 }
 
+int groundOct(float t) {
+  // weniger Detail in der Ferne (sieht man eh nicht), im Sparmodus noch weniger
+  int oct = t < 25.0 ? 8 : (t < 120.0 ? 6 : 4);
+  if (uQuality < 0.5) oct = max(oct - 2, 3);
+  return oct;
+}
+
 float sceneH(vec2 p, float t, out float g) {
-  g = groundH(p, t < 150.0 ? 8 : 6);
+  g = groundH(p, groundOct(t));
   if (t > TREE_DIST) return g;
   return g + treeH(p, g);
 }
 
 float march(vec3 ro, vec3 rd, float tmax, int steps, out float m, out float g) {
   float t = 0.05;
+  float lastD = 1e9;
   m = 0.0; g = 0.0;
   for (int i = ZERO; i < steps; i++) {
     vec3 p = ro + rd * t;
-    float h = sceneH(p.xz, t, g);
-    float dT = p.y - h;
+    if (p.y > MAX_H && rd.y >= 0.0) break;           // ueber allem -> Himmel
+    g = groundH(p.xz, groundOct(t));
+    float dT = p.y - g;
+    bool nearTrees = t < TREE_DIST && dT < TREE_TOP;
+    // Baeume nur pruefen, wenn der Strahl auf Baumhoehe ist (spart sehr viel)
+    gTreeMask = 0.0;
+    if (nearTrees) dT -= treeH(p.xz, g);
+    else if (t < TREE_DIST) dT -= TREE_TOP;
     float om;
     float dO = sdObj(p, om);
     if (dO < 0.0015 * t + 0.001) { m = om; return t; }
-    if (dT < 0.0015 * t) { m = 0.0; return t; }
-    float k = t < TREE_DIST ? 0.3 : 0.5;
-    t += min(max(dT * k, 0.008 * t), dO);
-    if (t > tmax) break;
+    if ((nearTrees || t >= TREE_DIST) && dT < 0.0015 * t) { m = 0.0; return t; }
+    lastD = (nearTrees || t >= TREE_DIST) ? dT : 1e9;
+    // kleine Schritte nur zwischen Baeumen, in der Ferne groessere
+    bool inForest = nearTrees && gTreeMask > 0.02;
+    float k = inForest ? 0.3 : (t < 150.0 ? 0.55 : 0.75);
+    float minStep = inForest ? 0.006 * t + 0.01 : 0.011 * t + 0.01;
+    t += min(max(dT * k, minStep), dO);
+    if (t > tmax) return -1.0;
   }
+  // Schritte aufgebraucht, aber schon dicht an der Oberflaeche: als Treffer werten
+  // (sonst erscheinen dort helle Himmels-/Nebelflecken)
+  if (lastD < 0.6 + 0.01 * t) { m = 0.0; return t; }
   return -1.0;
 }
 
@@ -337,10 +365,12 @@ float softShadow(vec3 ro, vec3 rd) {
   // Startpunkt leicht verrauscht, damit keine Streifen (Banding) entstehen
   float res = 1.0, t = 0.3 + 0.3 * hash(ro.xz * 37.0 + fract(uTime));
   float ph = 1e10;
-  for (int i = ZERO; i < 48; i++) {
+  int n = uQuality > 0.5 ? 40 : 14;
+  float maxT = uQuality > 0.5 ? 1000.0 : 120.0;
+  for (int i = ZERO; i < n; i++) {
     vec3 p = ro + rd * t;
     float om;
-    float hT = p.y - groundH(p.xz, t < 8.0 ? 8 : 4);
+    float hT = p.y - groundH(p.xz, t < 8.0 ? 6 : 4);
     float hO = sdObj(p, om);
     // Objekt-Abstaende >= 0.45 koennen Begrenzungsvolumen sein -> kein Halbschatten
     float h = hO < 0.45 ? min(hT, hO) : hT;
@@ -350,7 +380,7 @@ float softShadow(vec3 ro, vec3 rd) {
     float d = sqrt(max(h * h - y * y, 0.0));
     res = min(res, 7.0 * d / max(0.0, t - y));
     ph = h;
-    if (res < 0.01 || p.y > 200.0) break;
+    if (res < 0.01 || p.y > 200.0 || t > maxT) break;
     t += clamp(stepH * 0.8, 0.12, 20.0);
   }
   res = clamp(res, 0.0, 1.0);
@@ -434,7 +464,8 @@ vec3 shade(vec3 p, vec3 rd, float t, float m, float g, bool cheap) {
   }
   float dif = max(dot(n, lightDir), 0.0);
   float sh = 1.0;
-  if (!cheap && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.05 + 0.002 * t), lightDir);
+  // Schatten nur in der Naehe, wo man sie sieht
+  if (!cheap && t < 280.0 && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.05 + 0.002 * t), lightDir);
   sh *= cloudShadow(p.xz);
   vec3 amb = skyBase(vec3(0.0, 1.0, 0.0)) * (0.4 + 0.6 * n.y) * 0.6;
   amb += skyBase(normalize(vec3(-lightDir.x, 0.1, -lightDir.z))) * 0.15;
@@ -655,7 +686,7 @@ void main() {
   vec3 up = cross(fw, rt);
   vec3 rd = normalize(fw * 1.55 + uv.x * rt + uv.y * up);
 
-  int steps = uQuality > 0.5 ? 240 : 150;
+  int steps = uQuality > 0.5 ? 200 : 110;
 
   // Bis zu zwei Durchgaenge: 1. Blickstrahl, 2. Spiegelung auf dem Wasser.
   // Als Schleife geschrieben, damit march() und shade() nur EINMAL im Code stehen.
@@ -670,7 +701,7 @@ void main() {
   for (int pass = ZERO; pass < passes; pass++) {
     bool second = pass > 0;
     float tw = (HAS_WATER == 1 && !second && prd.y < 0.0) ? -pro.y / prd.y : 1e9;
-    int st = second ? (uQuality > 0.5 ? 130 : 80) : steps;
+    int st = second ? (uQuality > 0.5 ? 100 : 55) : steps;
     float m, g;
     float t = march(pro, prd, min(tw, TMAX), st, m, g);
     float tSeg = TMAX;

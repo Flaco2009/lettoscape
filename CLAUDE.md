@@ -12,6 +12,13 @@ Cozy Live-Wallpaper (Electron, Windows zuerst, Linux später). Sprache im UI und
 ## Szenen laden
 `renderer.js` kompiliert asynchron (KHR_parallel_shader_compile), hält fertige Szenen im Cache, lädt die übrigen im Hintergrund vor (Einstellung `preload`) und meldet `loading/ready/error/lost` per `sceneStatus` an das Panel. Fehler in der Konsole des Wallpaper-Fensters: `Szene <id> bereit nach <ms> ms`.
 
+## Leistung / Wärme
+- Leistungsstufen `power` = eco | balanced | beauty | custom (Werte in `main.js` `POWER`/`BUDGET` und im Panel `PRESETS`). Im Akkubetrieb mit `batterySaver` erzwingt `wallSettings()` die Stufe eco.
+- Renderer: feste Pixel-Obergrenze je Stufe (`maxPixels`), misst GPU-Zeit (EXT_disjoint_timer_query_webgl2) und regelt `dynScale` (min. 55 %), danach die FPS (`fpsLimit`) herunter. Live-Werte gehen per `render-stats` ans Panel.
+- Pause pro Bildschirm, wenn ein Fenster den Arbeitsbereich verdeckt (`desktop-win.js` `coveredDisplays`), bei gesperrtem Bildschirm und nach 15 min Abwesenheit. Pausiert = Canvas versteckt, Schleife wacht nur alle 500 ms auf.
+- Shader: Bäume nur prüfen, wenn der Strahl auf Baumhöhe ist (`TREE_TOP`), weniger Oktaven in der Ferne (`groundOct`), `farMountains` erst ab Startdistanz.
+- Screenshots/Vergleiche immer mit `&adapt=0`, sonst regelt die langsame Software-GPU die Auflösung herunter und das Bild wirkt blass.
+
 ## Testen
 - App: `npm install && npm start`
 - Nur eine Szene im Browser: `npx http-server src -p 8080`, dann `http://localhost:8080/wallpaper/index.html?scene=camping&hour=22&weather=rain`

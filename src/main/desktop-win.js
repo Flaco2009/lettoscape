@@ -19,6 +19,8 @@ const GetForegroundWindow = user32.func('HWND __stdcall GetForegroundWindow()');
 const GetClassNameW = user32.func('int __stdcall GetClassNameW(HWND hwnd, _Out_ uint16_t *buf, int max)');
 const RECT = koffi.struct('RECT', { left: 'long', top: 'long', right: 'long', bottom: 'long' });
 const GetWindowRect = user32.func('bool __stdcall GetWindowRect(HWND hwnd, _Out_ RECT *rect)');
+const IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(HWND hwnd)');
+const IsIconic = user32.func('bool __stdcall IsIconic(HWND hwnd)');
 const SystemParametersInfoW = user32.func('bool __stdcall SystemParametersInfoW(uint32_t action, uint32_t param, void *pv, uint32_t winIni)');
 
 const SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
@@ -106,4 +108,55 @@ function isForegroundFullscreen(displaysPhysical) {
   );
 }
 
-module.exports = { attach, getWallpaper, setWallpaper, isForegroundFullscreen, hwndOf };
+// Unsichtbare ("cloaked") Fenster, z.B. auf anderen virtuellen Desktops oder versteckte UWP-Apps
+let DwmGetWindowAttribute = null;
+try {
+  const dwm = koffi.load('dwmapi.dll');
+  DwmGetWindowAttribute = dwm.func('long __stdcall DwmGetWindowAttribute(HWND hwnd, uint32_t attr, _Out_ int *pv, uint32_t cb)');
+} catch { DwmGetWindowAttribute = null; }
+function isCloaked(h) {
+  if (!DwmGetWindowAttribute) return false;
+  const v = [0];
+  return DwmGetWindowAttribute(h, 14 /* DWMWA_CLOAKED */, v, 4) === 0 && v[0] !== 0;
+}
+
+let enumList = [];
+const enumCallback = koffi.register((h) => { enumList.push(h); return true; }, koffi.pointer(EnumProc));
+const IGNORE_CLASSES = new Set([...DESKTOP_CLASSES, 'Windows.UI.Core.CoreWindow', 'tooltips_class32', 'Shell_InputSwitchTopLevelWindow', 'NotifyIconOverflowWindow', 'XamlExplorerHostIslandWindow']);
+
+/**
+ * Welche Bildschirme sind komplett verdeckt (maximiertes oder Vollbild-Fenster)?
+ * Dann sieht man das Wallpaper dort nicht und es kann pausieren.
+ * @param {{x,y,width,height}[]} works Arbeitsbereiche (ohne Taskleiste) in physischen Pixeln
+ * @returns {boolean[]} pro Bildschirm: verdeckt ja/nein
+ */
+function coveredDisplays(works) {
+  enumList = [];
+  EnumWindows(enumCallback, 0); // Reihenfolge: oberstes Fenster zuerst
+  const covered = works.map(() => false);
+  const name = new Uint16Array(128);
+  for (const h of enumList) {
+    if (!IsWindowVisible(h) || IsIconic(h)) continue;
+    const len = GetClassNameW(h, name, 128);
+    const cls = String.fromCharCode(...name.slice(0, len));
+    if (IGNORE_CLASSES.has(cls)) continue;
+    const r = {};
+    if (!GetWindowRect(h, r)) continue;
+    if (r.right - r.left < 200 || r.bottom - r.top < 200) continue;
+    let relevant = false;
+    works.forEach((w, i) => {
+      if (covered[i]) return;
+      const tol = 4;
+      if (r.left <= w.x + tol && r.top <= w.y + tol && r.right >= w.x + w.width - tol && r.bottom >= w.y + w.height - tol) relevant = true;
+    });
+    if (!relevant || isCloaked(h)) continue;
+    works.forEach((w, i) => {
+      const tol = 4;
+      if (r.left <= w.x + tol && r.top <= w.y + tol && r.right >= w.x + w.width - tol && r.bottom >= w.y + w.height - tol) covered[i] = true;
+    });
+    if (covered.every(Boolean)) break;
+  }
+  return covered;
+}
+
+module.exports = { attach, getWallpaper, setWallpaper, isForegroundFullscreen, coveredDisplays, hwndOf };

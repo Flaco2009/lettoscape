@@ -68,7 +68,7 @@ float groundH(vec2 p, int oct) {
   h += max(shore, side) * (2.6 + hills);
   h += near * 2.4;
   float mm = smoothstep(160.0, 380.0, z);
-  h += mm * ridged(p * 0.0045 + vec2(1.3, 7.1), oct) * 85.0;
+  if (mm > 0.0) h += mm * ridged(p * 0.0045 + vec2(1.3, 7.1), oct) * 85.0;
   h += smoothstep(250.0, 600.0, z) * 25.0;
   return h;
 }
@@ -99,7 +99,9 @@ float treeH(vec2 p, float g) {
 }
 
 float sceneH(vec2 p, float t, out float g) {
-  g = groundH(p, t < 250.0 ? 8 : 6);
+  int oct = t < 40.0 ? 8 : (t < 200.0 ? 6 : 5);
+  if (uQuality < 0.5) oct = max(oct - 2, 4);
+  g = groundH(p, oct);
   if (t > 220.0) return g;
   return g + treeH(p, g);
 }
@@ -207,9 +209,10 @@ float marchTerrain(vec3 ro, vec3 rd, float tmax, int steps, out float gOut) {
 
 float softShadow(vec3 ro, vec3 rd) {
   float res = 1.0, t = 0.5;
-  for (int i = ZERO; i < 40; i++) {
+  int n = uQuality > 0.5 ? 32 : 14;
+  for (int i = ZERO; i < n; i++) {
     vec3 p = ro + rd * t;
-    float h = p.y - groundH(p.xz, t < 8.0 ? 8 : 4);
+    float h = p.y - groundH(p.xz, t < 8.0 ? 6 : 4);
     res = min(res, 10.0 * h / t);
     if (res < 0.01 || p.y > 220.0) break;
     t += clamp(h * 0.6, 0.5, 25.0);
@@ -261,7 +264,7 @@ vec3 shadeTerrain(vec3 p, vec3 rd, float t, float g, bool cheap) {
   // Licht
   float dif = max(dot(n, lightDir), 0.0);
   float sh = 1.0;
-  if (!cheap && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.3 + 0.002 * t), lightDir);
+  if (!cheap && t < 160.0 && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.3 + 0.002 * t), lightDir);
   vec3 amb = skyBase(vec3(0.0, 1.0, 0.0)) * (0.4 + 0.6 * n.y) * 0.6;
   amb += skyBase(normalize(vec3(-lightDir.x, 0.1, -lightDir.z))) * 0.15;
   float ao = mix(0.55, 1.0, smoothstep(0.0, 3.0, tree)) ;
@@ -377,7 +380,7 @@ void main() {
   vec3 up = cross(fw, rt);
   vec3 rd = normalize(fw * 1.55 + uv.x * rt + uv.y * up);
 
-  int steps = uQuality > 0.5 ? 240 : 150;
+  int steps = uQuality > 0.5 ? 200 : 110;
   float tmax = 1400.0;
   float tWater = rd.y < 0.0 ? -ro.y / rd.y : 1e9;
 
@@ -425,7 +428,7 @@ void main() {
     vec3 rr = reflect(rd, n);
     rr.y = abs(rr.y);
     float g2;
-    float t2 = marchTerrain(p + vec3(0, 0.02, 0), rr, 1200.0, uQuality > 0.5 ? 130 : 80, g2);
+    float t2 = marchTerrain(p + vec3(0, 0.02, 0), rr, 1200.0, uQuality > 0.5 ? 100 : 55, g2);
     vec3 refl;
     if (t2 > 0.0) {
       vec3 p2 = p + rr * t2;

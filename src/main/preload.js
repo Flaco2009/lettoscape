@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('lettoscape', {
   onCursor: (cb) => ipcRenderer.on('cursor', (_e, p) => cb(p)),
   onPause: (cb) => ipcRenderer.on('pause', (_e, p) => cb(p)),
   sceneStatus: (st) => ipcRenderer.send('scene-status', st),
+  renderStats: (st) => ipcRenderer.send('render-stats', st),
+  onRenderStats: (cb) => ipcRenderer.on('render-stats', (_e, st) => cb(st)),
+  onPower: (cb) => ipcRenderer.on('power', (_e, p) => cb(p)),
   onSceneStatus: (cb) => ipcRenderer.on('scene-status', (_e, st) => cb(st)),
   // beide
   onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s)),

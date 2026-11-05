@@ -191,3 +191,20 @@ button:focus-visible, input:focus-visible + i { outline: 2px solid var(--ember);
   background: #8a3a28; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Leistung */
+.seg.power button { font-size: 12.5px; }
+.live {
+  display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; padding: 7px 10px;
+  border-radius: 9px; background: var(--card); border: 1px solid var(--line); color: var(--muted);
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--moss); box-shadow: 0 0 8px rgba(143, 174, 122, 0.6); flex: none; }
+.live.warm .dot { background: #e0b04b; box-shadow: 0 0 8px rgba(224, 176, 75, 0.6); }
+.live.hot .dot { background: #e0603b; box-shadow: 0 0 8px rgba(224, 96, 59, 0.7); }
+.live.idle .dot { background: #6f6256; box-shadow: none; }
+details.adv { margin: 4px 0 6px; }
+details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 4px 0 8px; list-style: none; }
+details.adv summary::before { content: "▸ "; }
+details.adv[open] summary::before { content: "▾ "; }
+.adv .seg button { padding: 6px 4px; font-size: 12px; }

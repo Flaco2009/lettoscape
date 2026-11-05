@@ -89,9 +89,10 @@ vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
   float a = uTime * 0.55;
   vec3 b = normalize(vec3(cos(a), -0.015, sin(a)));
   float tm = min(t, 420.0);
-  float dt = tm / 28.0;
+  int nSt = uQuality > 0.5 ? 20 : 10;
+  float dt = tm / float(nSt);
   float dens = 0.0;
-  for (int i = ZERO; i < 28; i++) {
+  for (int i = ZERO; i < nSt; i++) {
     vec3 x = ro + rd * (dt * (float(i) + hash(gl_FragCoord.xy + float(i))));
     vec3 v = x - LAMP;
     float al = dot(v, b);
