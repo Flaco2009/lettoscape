@@ -1,17 +1,17 @@
-// Lettoscape – gemeinsame Shader-Basis fuer alle Szenen (ausser Bergsee, der ist eigenstaendig).
+// Lettoscape – shared shader base for all scenes (except Mountain Lake, which is standalone).
 //
-// Eine Szene liefert nur ihren eigenen GLSL-Teil (siehe build()). Pflicht-Funktionen:
+// A scene only provides its own GLSL part (see build()). Required functions:
 //
-//   float groundH(vec2 p, int oct)              Gelaendehoehe
-//   float forestMask(vec2 p, float g)           0..1 wo Nadelbaeume wachsen
-//   float sdObj(vec3 p, out float m)            SDF aller Objekte, m = Material-ID (>= 1)
-//   vec3  objAlbedo(float m, vec3 p, vec3 n)    Farbe je Material
-//   vec3  objEmit(float m, vec3 p, vec3 n)      Eigenleuchten (Fenster, Feuer, Lampen)
-//   vec3  sceneLights(vec3 p, vec3 n)           Licht lokaler Quellen auf Oberflaechen
-//   vec3  sceneVolume(vec3 ro, vec3 rd, float t, vec3 col)  Glow, Rauch, Lichtkegel
-//   void  sceneCamera(out vec3 ro, out vec3 fw) Kamera
+//   float groundH(vec2 p, int oct)              terrain height
+//   float forestMask(vec2 p, float g)           0..1 where conifers grow
+//   float sdObj(vec3 p, out float m)            SDF of all objects, m = material ID (>= 1)
+//   vec3  objAlbedo(float m, vec3 p, vec3 n)    color per material
+//   vec3  objEmit(float m, vec3 p, vec3 n)      emission (windows, fire, lamps)
+//   vec3  sceneLights(vec3 p, vec3 n)           light of local sources on surfaces
+//   vec3  sceneVolume(vec3 ro, vec3 rd, float t, vec3 col)  glow, smoke, light cone
+//   void  sceneCamera(out vec3 ro, out vec3 fw) camera
 //
-// Pflicht-Defines: TMAX, TREE_DIST, HAS_WATER (0/1), WAVE_AMP, WAVE_DIR (vec2)
+// Required defines: TMAX, TREE_DIST, HAS_WATER (0/1), WAVE_AMP, WAVE_DIR (vec2)
 
 const prelude = `#version 300 es
 precision highp float;
@@ -27,11 +27,11 @@ uniform float uClouds;
 uniform float uBright;
 uniform vec2  uMouse;
 uniform float uQuality;
-uniform vec2  uJitter;   // Sub-Pixel-Versatz fuer die zeitliche Rekonstruktion (post.js)
+uniform vec2  uJitter;   // sub-pixel offset for the temporal reconstruction (post.js)
 
-// ZERO ist immer 0, aber der Compiler weiss das nicht. Schleifen, die bei ZERO starten,
-// werden deshalb nicht ausgerollt und Funktionen darin nicht vervielfacht. Das verkuerzt die
-// Kompilierzeit unter Windows (Direct3D/fxc) von Minuten auf Sekunden.
+// ZERO is always 0, but the compiler does not know that. Loops that start at ZERO
+// are therefore not unrolled and functions inside them are not duplicated. This cuts the
+// compile time on Windows (Direct3D/fxc) from minutes to seconds.
 #define ZERO min(int(uRes.x), 0)
 
 const float PI = 3.14159265;
@@ -71,14 +71,14 @@ float ridged(vec2 p, int oct) {
   }
   return s;
 }
-// Ferne Berge als Kulisse (fuer Szenen mit Blick in die Weite)
+// Distant mountains as backdrop (for scenes with a far view)
 float farMountains(vec2 p, float start, float height) {
   float m = smoothstep(start, start * 2.2, length(p));
-  if (m <= 0.0) return 0.0;   // in der Naehe gar nicht erst rechnen
+  if (m <= 0.0) return 0.0;   // do not compute nearby at all
   return m * ridged(p * 0.0045 + vec2(1.3, 7.1), 6) * height;
 }
 
-// ---------- SDF-Bausteine ----------
+// ---------- SDF building blocks ----------
 mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
 float sdBox(vec3 p, vec3 b) { vec3 q = abs(p) - b; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); }
 float sdSphere(vec3 p, float r) { return length(p) - r; }
@@ -91,7 +91,7 @@ float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
   float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
   return length(pa - ba * h) - r;
 }
-// Kegelstumpf, zentriert, Hoehe 2h, unten r1, oben r2
+// Truncated cone, centered, height 2h, bottom r1, top r2
 float sdCappedCone(vec3 p, float h, float r1, float r2) {
   vec2 q = vec2(length(p.xz), p.y);
   vec2 k1 = vec2(r2, h);
@@ -101,13 +101,13 @@ float sdCappedCone(vec3 p, float h, float r1, float r2) {
   float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
   return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
 }
-// Satteldach: Basis bei y=0 mit halber Breite w (x), First auf Hoehe hgt, halbe Laenge len (z)
+// Gable roof: base at y=0 with half width w (x), ridge at height hgt, half length len (z)
 float sdGable(vec3 p, float w, float hgt, float len) {
   float k = sqrt(hgt * hgt + w * w);
   float roof = (abs(p.x) * hgt + p.y * w - w * hgt) / k;
   return max(max(roof, -p.y), abs(p.z) - len);
 }
-// Pyramide (4 Seiten), Basis halbe Breite w bei y=0, Spitze bei hgt
+// Pyramid (4 sides), base half width w at y=0, apex at hgt
 float sdPyramid(vec3 p, float w, float hgt) {
   float k = sqrt(hgt * hgt + w * w);
   vec2 q = abs(p.xz);
@@ -116,12 +116,12 @@ float sdPyramid(vec3 p, float w, float hgt) {
 }
 float sdTorus(vec3 p, vec2 t) { vec2 q = vec2(length(p.xz) - t.x, p.y); return length(q) - t.y; }
 float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
-// Flache Bauflaeche: Gelaende um einen Punkt auf feste Hoehe ziehen
+// Flat building plot: pull terrain around a point to a fixed height
 float pad(float g, vec2 p, vec2 c, float r, float hgt) {
   return mix(g, hgt, smoothstep(r * 1.9, r, length(p - c)));
 }
 
-// ---------- Licht / Himmel ----------
+// ---------- Light / sky ----------
 vec3 sunDir, moonDir, lightDir, lightCol;
 float dayAmt, duskAmt, nightAmt, overcast;
 
@@ -145,12 +145,12 @@ void setupLight() {
   lightCol *= 1.0 - overcast * 0.7;
 }
 
-// Warmes Fensterlicht: nachts hell, tagsueber nur leicht
+// Warm window light: bright at night, only slight by day
 vec3 windowGlow(float seed) {
   float fl = 0.85 + 0.15 * noise(vec2(uTime * 2.5, seed * 7.0));
   return vec3(1.0, 0.6, 0.24) * (0.25 + 2.8 * nightAmt + 1.2 * duskAmt) * fl;
 }
-// Flackerndes Feuer
+// Flickering fire
 float fireFlicker(float seed) {
   return 0.75 + 0.25 * noise(vec2(uTime * 7.0, seed)) + 0.1 * sin(uTime * 23.0 + seed);
 }
@@ -206,13 +206,13 @@ vec3 sky(vec3 rd) {
   return col;
 }
 
-// Licht einer Punktquelle (fuer sceneLights)
+// Light of a point source (for sceneLights)
 vec3 pointLight(vec3 p, vec3 n, vec3 lp, vec3 lc) {
   vec3 l = lp - p;
   float d2 = dot(l, l);
   return lc * max(dot(n, l * inversesqrt(d2)), 0.0) / (d2 + 0.6);
 }
-// Leuchthof einer Punktquelle entlang des Blickstrahls (fuer sceneVolume)
+// Glow halo of a point source along the view ray (for sceneVolume)
 vec3 pointGlow(vec3 ro, vec3 rd, float t, vec3 lp, vec3 lc, float size) {
   vec3 v = lp - ro;
   float along = dot(v, rd);
@@ -223,7 +223,7 @@ vec3 pointGlow(vec3 ro, vec3 rd, float t, vec3 lp, vec3 lc, float size) {
 
 // ---------- Wind ----------
 const vec2 WIND = vec2(0.94, 0.34);
-// Boeen ziehen als Wellen ueber die Landschaft
+// Gusts travel across the landscape as waves
 float gustAt(vec2 p) { return 0.5 + 0.5 * sin(dot(p, WIND) * 0.09 - uTime * 0.9) * sin(dot(p, vec2(-WIND.y, WIND.x)) * 0.05 + uTime * 0.3); }
 vec2 windSway(vec2 c) {
   float ph = hash(c) * 6.2832;
@@ -232,14 +232,14 @@ vec2 windSway(vec2 c) {
   return WIND * (sin(uTime * 1.4 + ph) * 0.05 + gust * 0.22) * storm;
 }
 
-// Ziehende Wolkenschatten auf dem Boden
+// Drifting cloud shadows on the ground
 float cloudShadow(vec2 p) {
   float c = fbm(p * 0.006 + WIND * uTime * 0.025, 4);
   float amt = clamp(0.25 + uClouds * 1.4, 0.0, 1.0) * (1.0 - overcast) * dayAmt;
   return 1.0 - smoothstep(0.42, 0.68, c) * 0.6 * amt;
 }
 
-// Rauchsaeule (Kamin, Lagerfeuer). S = Austritt, strength ~ 0..1
+// Smoke column (chimney, campfire). S = origin, strength ~ 0..1
 vec3 smokeColumn(vec3 ro, vec3 rd, float t, vec3 col, vec3 S, float strength, float spread) {
   vec2 rxz = rd.xz;
   float s = dot(S.xz - ro.xz, rxz) / max(dot(rxz, rxz), 1e-4);
@@ -254,9 +254,9 @@ vec3 smokeColumn(vec3 ro, vec3 rd, float t, vec3 col, vec3 S, float strength, fl
   dens *= 0.35 + 1.0 * fbm(vec2(hd * 2.5 + hy * 0.3, hy * 1.3 - uTime * 0.7), 4);
   vec3 lit = skyBase(vec3(0.0, 1.0, 0.0)) * 0.9 + lightCol * 0.12;
   vec3 smoke = mix(vec3(0.62, 0.62, 0.66) * mix(0.12, 1.0, dayAmt), lit, 0.4);
-  // nachts leicht mondhell, damit der Rauch vor dem dunklen Himmel sichtbar bleibt
+  // slightly moonlit at night so the smoke stays visible against the dark sky
   smoke = max(smoke, vec3(0.1, 0.11, 0.15) * nightAmt);
-  // unten warm angestrahlt (Feuer/Fenster)
+  // lit warmly from below (fire/windows)
   smoke += vec3(0.5, 0.22, 0.06) * smoothstep(2.0, 0.0, hy) * (0.3 + nightAmt) * 0.5;
   return mix(col, smoke, clamp(dens * strength, 0.0, 0.75));
 }
@@ -270,29 +270,29 @@ vec3 flowerColor(float h) {
 `;
 
 const core = `
-// ---------- Optionale Szenen-Schalter ----------
+// ---------- Optional scene switches ----------
 #ifndef LEAVES
-#define LEAVES 0.5        // fallende Blaetter (0 = aus)
+#define LEAVES 0.5        // falling leaves (0 = off)
 #endif
 #ifndef FLOWERS
-#define FLOWERS 0.6       // Blumen auf Wiesen
+#define FLOWERS 0.6       // flowers on meadows
 #endif
 #ifndef BATS
-#define BATS 0.0          // Fledermaeuse in der Daemmerung/Nacht
+#define BATS 0.0          // bats at dusk/night
 #endif
 #ifndef BUTTERFLIES
-#define BUTTERFLIES 0.0   // Schmetterlinge am Tag
+#define BUTTERFLIES 0.0   // butterflies by day
 #endif
 #ifndef FISH
-#define FISH 1.0          // springende Fische (Ringe im Wasser)
+#define FISH 1.0          // jumping fish (rings on the water)
 #endif
 #ifndef MAX_H
-#define MAX_H 320.0       // hoechster Punkt der Landschaft (Strahlen darueber = Himmel)
+#define MAX_H 320.0       // highest point of the landscape (rays above = sky)
 #endif
-#define TREE_TOP 7.2      // hoechster Baum ueber Boden
+#define TREE_TOP 7.2      // tallest tree above ground
 
-// ---------- Wald ----------
-float gTreeMask = 0.0; // Waldanteil am zuletzt geprueften Punkt (fuer die Schrittweite)
+// ---------- Forest ----------
+float gTreeMask = 0.0; // forest share at the last checked point (for the step size)
 float treeH(vec2 p, float g) {
   float m = forestMask(p, g);
   gTreeMask = m;
@@ -303,22 +303,22 @@ float treeH(vec2 p, float g) {
   vec2 ctr = (c + 0.5 + (vec2(hash(c + 1.3), hash(c + 2.7)) - 0.5) * 0.25) * cs;
   float th = 3.2 + hash(c + 3.9) * 3.4;
   float rad = th * 0.21;
-  // Wind: Spitze schwankt staerker als der Fuss
+  // Wind: the tip sways more than the base
   vec2 sway = windSway(ctr);
   float k0 = 1.0 - length(p - ctr) / rad;
   vec2 dv = p - ctr - sway * clamp(k0, 0.0, 1.0);
-  // zerzauste Silhouette statt glattem Kegel
+  // tousled silhouette instead of a smooth cone
   float a = atan(dv.y, dv.x);
   rad *= 0.86 + 0.2 * noise(vec2(a * 2.2 + hash(c) * 20.0, th * 3.0));
   float k = 1.0 - length(dv) / rad;
   if (k <= 0.0) return 0.0;
-  // Nadel-Struktur: weiche Buckel statt harter Etagen (keine Streifen)
+  // Needle structure: soft bumps instead of hard tiers (no stripes)
   float fluff = (noise(dv * 3.0 + c * 7.0) - 0.5) * 0.35 * sqrt(k);
   return max(0.0, th * k + fluff);
 }
 
 int groundOct(float t) {
-  // weniger Detail in der Ferne (sieht man eh nicht), im Sparmodus noch weniger
+  // less detail in the distance (not visible anyway), even less in power-saving mode
   int oct = t < 25.0 ? 8 : (t < 120.0 ? 6 : 4);
   if (uQuality < 0.5) oct = max(oct - 2, 3);
   return oct;
@@ -336,11 +336,11 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, out float m, out float g) {
   m = 0.0; g = 0.0;
   for (int i = ZERO; i < steps; i++) {
     vec3 p = ro + rd * t;
-    if (p.y > MAX_H && rd.y >= 0.0) break;           // ueber allem -> Himmel
+    if (p.y > MAX_H && rd.y >= 0.0) break;           // above everything -> sky
     g = groundH(p.xz, groundOct(t));
     float dT = p.y - g;
     bool nearTrees = t < TREE_DIST && dT < TREE_TOP;
-    // Baeume nur pruefen, wenn der Strahl auf Baumhoehe ist (spart sehr viel)
+    // Only check trees when the ray is at tree height (saves a lot)
     gTreeMask = 0.0;
     if (nearTrees) dT -= treeH(p.xz, g);
     else if (t < TREE_DIST) dT -= TREE_TOP;
@@ -349,21 +349,21 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, out float m, out float g) {
     if (dO < 0.0015 * t + 0.001) { m = om; return t; }
     if ((nearTrees || t >= TREE_DIST) && dT < 0.0015 * t) { m = 0.0; return t; }
     lastD = (nearTrees || t >= TREE_DIST) ? dT : 1e9;
-    // kleine Schritte nur zwischen Baeumen, in der Ferne groessere
+    // small steps only between trees, larger ones in the distance
     bool inForest = nearTrees && gTreeMask > 0.02;
     float k = inForest ? 0.3 : (t < 150.0 ? 0.55 : 0.75);
     float minStep = inForest ? 0.006 * t + 0.01 : 0.011 * t + 0.01;
     t += min(max(dT * k, minStep), dO);
     if (t > tmax) return -1.0;
   }
-  // Schritte aufgebraucht, aber schon dicht an der Oberflaeche: als Treffer werten
-  // (sonst erscheinen dort helle Himmels-/Nebelflecken)
+  // Steps used up, but already close to the surface: count as a hit
+  // (otherwise bright sky/fog spots appear there)
   if (lastD < 0.6 + 0.01 * t) { m = 0.0; return t; }
   return -1.0;
 }
 
 float softShadow(vec3 ro, vec3 rd) {
-  // Startpunkt leicht verrauscht, damit keine Streifen (Banding) entstehen
+  // Start point slightly jittered so no stripes (banding) appear
   float res = 1.0, t = 0.3 + 0.3 * hash(ro.xz * 37.0 + fract(uTime));
   float ph = 1e10;
   int n = uQuality > 0.5 ? 40 : 14;
@@ -373,10 +373,10 @@ float softShadow(vec3 ro, vec3 rd) {
     float om;
     float hT = p.y - groundH(p.xz, t < 8.0 ? 6 : 4);
     float hO = sdObj(p, om);
-    // Objekt-Abstaende >= 0.45 koennen Begrenzungsvolumen sein -> kein Halbschatten
+    // Object distances >= 0.45 may be bounding volumes -> no penumbra
     float h = hO < 0.45 ? min(hT, hO) : hT;
     float stepH = min(hT, hO);
-    // verbesserte weiche Schatten (iq)
+    // improved soft shadows (iq)
     float y = h * h / (2.0 * ph);
     float d = sqrt(max(h * h - y * y, 0.0));
     res = min(res, 7.0 * d / max(0.0, t - y));
@@ -417,7 +417,7 @@ vec3 terrainAlbedo(vec3 p, vec3 n, float g, float t) {
   float fm = forestMask(p.xz, g);
   float nv = fbm(p.xz * 0.3, 3);
   vec3 grass = mix(vec3(0.16, 0.2, 0.07), vec3(0.42, 0.36, 0.14), smoothstep(0.35, 0.75, nv));
-  // feine Grasstruktur + helle Boeen, die ueber die Wiese laufen
+  // fine grass texture + bright gusts running across the meadow
   grass *= 0.85 + 0.3 * noise(p.xz * 6.0);
   float gust = fbm(p.xz * 0.11 - WIND * uTime * 0.9, 3);
   grass *= 0.8 + 0.45 * smoothstep(0.3, 0.75, gust);
@@ -436,7 +436,7 @@ vec3 terrainAlbedo(vec3 p, vec3 n, float g, float t) {
   }
   vec3 rock  = mix(vec3(0.27, 0.27, 0.29), vec3(0.4, 0.39, 0.38), nv);
   vec3 treeC = mix(vec3(0.03, 0.08, 0.05), vec3(0.06, 0.13, 0.07), hash(floor(p.xz / 1.8)));
-  // hellere Spitzen, dunkle Tiefe, leichte Farbvariation (Tanne/Fichte)
+  // lighter tips, dark depth, slight color variation (fir/spruce)
   treeC *= 0.75 + 0.6 * smoothstep(0.5, 5.0, tree) + 0.25 * noise(p.xz * 4.0 + p.y * 3.0);
   treeC = mix(treeC, treeC * vec3(1.15, 1.05, 0.8), hash(floor(p.xz / 1.8) + 4.0) * 0.5);
   float steep = smoothstep(0.82, 0.55, n.y);
@@ -450,7 +450,7 @@ vec3 terrainAlbedo(vec3 p, vec3 n, float g, float t) {
 }
 
 vec3 shade(vec3 p, vec3 rd, float t, float m, float g, bool cheap) {
-  // Treffer exakt auf die Oberflaeche setzen (verhindert Ringe/Selbstschatten)
+  // Snap the hit exactly onto the surface (prevents rings/self-shadowing)
   if (m < 0.5) { float gg; p.y = sceneH(p.xz, t, gg); g = gg; }
   vec3 n = m < 0.5 ? terrainNormal(p.xz, t) : objNormal(p, t);
   vec3 alb;
@@ -465,13 +465,13 @@ vec3 shade(vec3 p, vec3 rd, float t, float m, float g, bool cheap) {
   }
   float dif = max(dot(n, lightDir), 0.0);
   float sh = 1.0;
-  // Schatten nur in der Naehe, wo man sie sieht
+  // Shadows only nearby, where they are visible
   if (!cheap && t < 280.0 && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.05 + 0.002 * t), lightDir);
   sh *= cloudShadow(p.xz);
   vec3 amb = skyBase(vec3(0.0, 1.0, 0.0)) * (0.4 + 0.6 * n.y) * 0.6;
   amb += skyBase(normalize(vec3(-lightDir.x, 0.1, -lightDir.z))) * 0.15;
   vec3 col = alb * (lightCol * dif * sh + amb * ao + sceneLights(p, n));
-  // weiches Randlicht vom Himmel (laesst Silhouetten "atmen")
+  // soft rim light from the sky (lets silhouettes "breathe")
   float rim = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
   col += alb * skyBase(normalize(vec3(rd.x, 0.15, rd.z))) * rim * 0.35 * ao;
   col += uRain * 0.04 * pow(max(dot(reflect(rd, n), lightDir), 0.0), 16.0) * lightCol;
@@ -559,7 +559,7 @@ vec3 precipitation(vec2 uv, vec3 col) {
   return col;
 }
 
-// Fallende Blaetter (drei Tiefenebenen)
+// Falling leaves (three depth layers)
 vec3 leaves(vec2 uv, vec3 col) {
   float amt = LEAVES * (1.0 - uSnow) * (1.0 - uRain * 0.6);
   if (amt < 0.01) return col;
@@ -587,7 +587,7 @@ vec3 leaves(vec2 uv, vec3 col) {
   return col;
 }
 
-// Schwebende Staub-/Pollenteilchen im Sonnenlicht
+// Floating dust/pollen particles in the sunlight
 vec3 motes(vec2 uv, vec3 rd, vec3 col) {
   float amt = dayAmt * (1.0 - overcast) * (1.0 - uRain);
   if (amt < 0.01) return col;
@@ -607,7 +607,7 @@ vec3 motes(vec2 uv, vec3 rd, vec3 col) {
   return col;
 }
 
-// Sternschnuppen (nur im Himmel)
+// Shooting stars (sky only)
 vec3 shootingStars(vec2 uv, vec3 col, float skyMask) {
   float amt = nightAmt * (1.0 - overcast) * skyMask;
   if (amt < 0.01) return col;
@@ -631,7 +631,7 @@ vec3 shootingStars(vec2 uv, vec3 col, float skyMask) {
   return col;
 }
 
-// Fledermaeuse in der Daemmerung und nachts
+// Bats at dusk and at night
 vec3 bats(vec2 uv, vec3 col) {
   float amt = BATS * max(duskAmt, nightAmt * 0.8) * (1.0 - uRain);
   if (amt < 0.01) return col;
@@ -650,7 +650,7 @@ vec3 bats(vec2 uv, vec3 col) {
   return mix(col, vec3(0.01, 0.01, 0.02), acc * amt);
 }
 
-// Schmetterlinge am Tag
+// butterflies by day
 vec3 butterflies(vec2 uv, vec3 col) {
   float amt = BUTTERFLIES * dayAmt * (1.0 - uRain) * (1.0 - uSnow);
   if (amt < 0.01) return col;
@@ -678,7 +678,7 @@ void main() {
 
   vec3 ro, fw;
   sceneCamera(ro, fw);
-  // ganz leichtes "Atmen" der Kamera, damit das Bild nie eingefroren wirkt
+  // very slight camera "breathing" so the image never looks frozen
   ro += vec3(sin(uTime * 0.11) * 0.06, sin(uTime * 0.17) * 0.035, sin(uTime * 0.07) * 0.05);
   fw = normalize(fw + vec3(sin(uTime * 0.09) * 0.004, sin(uTime * 0.13) * 0.003, 0.0));
   vec3 rt0 = normalize(cross(vec3(0, 1, 0), fw));
@@ -690,8 +690,8 @@ void main() {
 
   int steps = uQuality > 0.5 ? 200 : 110;
 
-  // Bis zu zwei Durchgaenge: 1. Blickstrahl, 2. Spiegelung auf dem Wasser.
-  // Als Schleife geschrieben, damit march() und shade() nur EINMAL im Code stehen.
+  // Up to two passes: 1. view ray, 2. reflection on the water.
+  // Written as a loop so march() and shade() appear only ONCE in the code.
   vec3 pro = ro, prd = rd;
   vec3 col = vec3(0.0);
   float tHit = TMAX;
@@ -714,7 +714,7 @@ void main() {
       tSeg = t;
     } else if (tw < TMAX) {
 #if HAS_WATER == 1
-      // Wasser getroffen: Welle-Normale bestimmen, dann zweiter Durchgang fuer die Spiegelung
+      // Water hit: determine the wave normal, then second pass for the reflection
       vec3 p = pro + prd * tw;
       float sp = uTime * (0.35 + uRain * 0.6);
       vec2 wp = p.xz * vec2(0.35, 0.9) + WAVE_DIR * sp;
@@ -732,7 +732,7 @@ void main() {
         n.xz += normalize(rf + 1e-4) * ring * 0.15 * uRain;
         n = normalize(n);
       }
-      // springende Fische: ab und zu Ringe auf dem Wasser
+      // jumping fish: now and then rings on the water
       if (FISH > 0.0) {
         vec2 fc = floor(p.xz / 9.0);
         float fh = hash(fc + 41.0);
@@ -758,7 +758,7 @@ void main() {
       if (!second) c = mix(c, applyFog(c, pro, prd, TMAX), 0.35 * smoothstep(0.25, 0.0, prd.y));
     }
     if (second) {
-      // Spiegelbild mit Wasser kombinieren
+      // combine the reflection with the water
       c = sceneVolume(pro, prd, tSeg, c);
       float fres = 0.04 + 0.96 * pow(1.0 - max(dot(-rd, wN), 0.0), 5.0);
       fres = mix(fres, 1.0, 0.55);
@@ -802,5 +802,5 @@ void main() {
 
 /** Baut den kompletten Fragment-Shader aus dem Szenen-Teil. */
 export function build(sceneSrc) {
-  return prelude + '\n// ===== Szene =====\n' + sceneSrc + '\n// ===== Kern =====\n' + core;
+  return prelude + '\n// ===== Scene =====\n' + sceneSrc + '\n// ===== Core =====\n' + core;
 }

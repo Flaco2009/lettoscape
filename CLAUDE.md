@@ -1,49 +1,49 @@
-# Lettoscape – Hinweise für Claude Code
+# Lettoscape – Notes for Claude Code
 
-Cozy Live-Wallpaper (Electron, Windows zuerst, Linux später). Sprache im UI und in Kommentaren: Deutsch.
+Cozy live wallpaper (Electron, Windows first, Linux later). Language in the UI, comments and docs: English.
 
-## Aufbau
-- `src/main/` Hauptprozess: Wallpaper-Fenster (WorkerW via koffi in `desktop-win.js`), Panel, ☰-Ecke, Tray, Autostart, Settings (`userData/settings.json`).
-- `src/wallpaper/` Renderer: ein Vollbild-Fragment-Shader pro Szene (WebGL2), `renderer.js` setzt Uniforms, `audio.js` = prozeduraler Sound.
-- `src/wallpaper/scenes/common.js` gemeinsame Shader-Basis (Noise, SDFs, Himmel, Licht, Wald, Wasser, Raymarch, Overlays). Szenen liefern nur `groundH`, `forestMask`, `sdObj`, `objAlbedo`, `objEmit`, `sceneLights`, `sceneVolume`, `sceneCamera` + Defines. Kommentar oben in `common.js` beschreibt den Vertrag.
-- `bergsee.js` ist eigenständig (älter, nutzt common.js nicht).
-- `src/shared/scenes.json` Szenenliste fürs Panel, `defaults.json` Standard-Einstellungen.
+## Structure
+- `src/main/` main process: wallpaper window (WorkerW via koffi in `desktop-win.js`), panel, ☰ corner, tray, autostart, settings (`userData/settings.json`).
+- `src/wallpaper/` renderer: one fullscreen fragment shader per scene (WebGL2), `renderer.js` sets uniforms, `audio.js` = procedural sound.
+- `src/wallpaper/scenes/common.js` shared shader base (noise, SDFs, sky, light, forest, water, raymarch, overlays). Scenes only provide `groundH`, `forestMask`, `sdObj`, `objAlbedo`, `objEmit`, `sceneLights`, `sceneVolume`, `sceneCamera` + defines. The comment at the top of `common.js` describes the contract.
+- `bergsee.js` is standalone (older, does not use common.js).
+- `src/shared/scenes.json` scene list for the panel, `defaults.json` default settings.
 
-## Szenen laden
-- `renderer.js` kompiliert asynchron (KHR_parallel_shader_compile), hält fertige Szenen im Cache und meldet `loading/ready/error/lost` per `sceneStatus` an das Panel. Konsole des Wallpaper-Fensters: `Szene <id> bereit nach <ms> ms`.
-- **Vorschaubilder** `src/wallpaper/previews/<id>-<day|dusk|night>.jpg` (+ `-thumb.jpg` fürs Panel): Klick auf eine noch nicht kompilierte Szene zeigt sofort das Bild (Einbrennen), sobald der Shader fertig ist, wird weich ins Live-Bild übergeblendet. **Nach jeder Änderung an einer Szene `npm run previews` (oder `npm run previews -- <id>`) ausführen und die Bilder committen.**
-- Vorladen (`preload`, Standard an): alle Szenen nacheinander im Hintergrund, nach jeder Szene so lange Pause wie das Kompilieren dauerte, nicht im Akkubetrieb.
-- Shader-Disk-Cache vergrößert (`gpu-program-cache-size-kb` in `main.js`): nach dem ersten Kompilieren sind Szenen auch nach Neustart sofort da.
+## Loading scenes
+- `renderer.js` compiles asynchronously (KHR_parallel_shader_compile), keeps finished scenes in a cache and reports `loading/ready/error/lost` via `sceneStatus` to the panel. Console of the wallpaper window: `Scene <id> ready after <ms> ms`.
+- **Preview images** `src/wallpaper/previews/<id>-<day|dusk|night>.jpg` (+ `-thumb.jpg` for the panel): clicking a scene that is not compiled yet shows the image at once (burn-in); as soon as the shader is ready it blends softly into the live image. **After every change to a scene run `npm run previews` (or `npm run previews -- <id>`) and commit the images.**
+- Preloading (`preload`, on by default): all scenes one after another in the background, after each scene a pause as long as compiling took, not on battery.
+- Shader disk cache enlarged (`gpu-program-cache-size-kb` in `main.js`): after the first compile scenes are instant even after a restart.
 
-## Leistung / Wärme
-- Leistungsstufen `power` = eco | balanced | beauty | custom (Werte in `main.js` `POWER`/`BUDGET` und im Panel `PRESETS`). Im Akkubetrieb mit `batterySaver` erzwingt `wallSettings()` die Stufe eco.
-- Renderer: feste Pixel-Obergrenze je Stufe (`maxPixels`), misst GPU-Zeit (EXT_disjoint_timer_query_webgl2) und regelt `dynScale` (min. 55 %), danach die FPS (`fpsLimit`) herunter. Live-Werte gehen per `render-stats` ans Panel.
-- Pause pro Bildschirm, Zustände `run` / `freeze` / `hide` (`main.js` `updatePause`, alle 500 ms):
-  - `freeze` (Standbild): Einstellung `pauseMode = 'desktop'` und eine fremde App ist im Vordergrund (`desktop-win.js` `desktopActive`; Desktop, Taskleiste und eigene Fenster zählen als Desktop). Es wird nichts gezeichnet, das letzte Bild bleibt stehen, Sound läuft weiter.
-  - `hide`: Bildschirm verdeckt (`coveredDisplays`), gesperrt oder 15 min Abwesenheit. Canvas versteckt, Sound aus.
-  - `pauseMode`: `desktop` (Standard) | `visible` (nur bei verdeckt pausieren) | `never`.
-  - Pausiert wacht die Render-Schleife nur alle 500 ms auf.
-- Shader: Bäume nur prüfen, wenn der Strahl auf Baumhöhe ist (`TREE_TOP`), weniger Oktaven in der Ferne (`groundOct`), `farMountains` erst ab Startdistanz.
-- Screenshots/Vergleiche immer mit `&adapt=0`, sonst regelt die langsame Software-GPU die Auflösung herunter und das Bild wirkt blass.
+## Performance / heat
+- Power levels `power` = eco | balanced | beauty | custom (values in `main.js` `POWER`/`BUDGET` and in the panel `PRESETS`). On battery with `batterySaver`, `wallSettings()` forces the eco level.
+- Renderer: fixed pixel cap per level (`maxPixels`), measures GPU time (EXT_disjoint_timer_query_webgl2) and lowers `dynScale` (min. 55 %), then the FPS (`fpsLimit`). Live values go to the panel via `render-stats`.
+- Pause per display, states `run` / `freeze` / `hide` (`main.js` `updatePause`, every 500 ms):
+  - `freeze` (still image): setting `pauseMode = 'desktop'` and a foreign app is in the foreground (`desktop-win.js` `desktopActive`; desktop, taskbar and own windows count as desktop). Nothing is drawn, the last frame stays, sound keeps playing. Also used for the manual pause (`wallPaused`).
+  - `hide`: display covered (`coveredDisplays`), locked or 15 min away. Canvas hidden, sound off.
+  - `pauseMode`: `desktop` (default) | `visible` (pause only when covered) | `never`.
+  - While paused the render loop only wakes up every 500 ms.
+- Shader: only check trees when the ray is at tree height (`TREE_TOP`), fewer octaves in the distance (`groundOct`), `farMountains` only from a start distance.
+- Always use `&adapt=0` for screenshots/comparisons, otherwise the slow software GPU lowers the resolution and the image looks pale.
 
-## Bild-Rekonstruktion (post.js)
-- Szene rendert in ein Zwischenbild niedriger Auflösung mit Sub-Pixel-Jitter (`uJitter`, in Szenen-Shadern über `FC = gl_FragCoord.xy + uJitter` nutzen, nie `gl_FragCoord` direkt für Strahlen/UVs).
-- `post.js` rekonstruiert zeitlich in voller Auflösung (Catmull-Rom + Verlauf mit Neighborhood-Clamping), schärft nach und macht beim Szenenwechsel den „Einbrenn“-Übergang. Kein Ladebildschirm: alte Szene läuft weiter, bis die neue kompiliert ist.
-- Zufallsrauschen in Shadern (z. B. Volumen-Jitter) mit `fract(uTime)` variieren, dann glättet die Rekonstruktion es weg.
+## Image reconstruction (post.js)
+- The scene renders into a low-resolution intermediate image with sub-pixel jitter (`uJitter`; in scene shaders use `FC = gl_FragCoord.xy + uJitter`, never `gl_FragCoord` directly for rays/UVs).
+- `post.js` reconstructs temporally at full resolution (Catmull-Rom + history with neighborhood clamping), sharpens, and does the “burn-in” transition on scene change. No loading screen: the old scene keeps running until the new one is compiled.
+- Vary random noise in shaders (e.g. volume jitter) with `fract(uTime)`, then the reconstruction smooths it away.
 
-## Testen
+## Testing
 - App: `npm install && npm start`
-- Nur eine Szene im Browser: `npx http-server src -p 8080`, dann `http://localhost:8080/wallpaper/index.html?scene=camping&hour=22&weather=rain`
-  (Parameter: `scene`, `hour`, `weather` = clear|cloudy|rain|snow|fog, `fog`, `clouds`, `scale`, `quality`)
+- One scene only in the browser: `npx http-server src -p 8080`, then `http://localhost:8080/wallpaper/index.html?scene=camping&hour=22&weather=rain`
+  (parameters: `scene`, `hour`, `weather` = clear|cloudy|rain|snow|fog, `fog`, `clouds`, `scale`, `quality`)
 
-## Regeln
-- Materialien in `sdObj`: m >= 1. Gelände ist m = 0.
-- Gelände unter Gebäuden mit `pad()` flach machen, Bäume per `forestMask` von Kamera und Gebäuden fernhalten.
-- Lichter: warm (`windowGlow`, `fireFlicker`), nachts stärker. Alles soll cozy wirken, nie gruselig.
-- **Windows-Kompilierzeit:** Unter Windows übersetzt Direct3D (fxc) die Shader, rollt Schleifen mit fester Grenze aus und kopiert Funktionen an jede Aufrufstelle. Deshalb: Schleifen immer `for (int i = ZERO; ...)` statt `= 0`, teure Funktionen (march, shade, sceneH, sdObj) nur an EINER Stelle aufrufen (Normalen per Schleife, Wasser-Spiegelung als zweiter Durchgang derselben Schleife in `main`).
-- Performance: Ziel 30 FPS bei 75 % Auflösung auf Mittelklasse-GPU. Teure Schleifen in `sceneVolume` sparsam.
+## Rules
+- Materials in `sdObj`: m >= 1. Terrain is m = 0.
+- Flatten terrain under buildings with `pad()`, keep trees away from camera and buildings via `forestMask`.
+- Lights: warm (`windowGlow`, `fireFlicker`), stronger at night. Everything should feel cozy, never creepy.
+- **Windows compile time:** On Windows Direct3D (fxc) translates the shaders, unrolls loops with fixed bounds and copies functions to every call site. Therefore: always `for (int i = ZERO; ...)` instead of `= 0`, call expensive functions (march, shade, sceneH, sdObj) at ONE place only (normals via a loop, water reflection as a second pass of the same loop in `main`).
+- Performance: target 30 FPS at 75 % resolution on a mid-range GPU. Keep expensive loops in `sceneVolume` sparse.
 
-## Komfort (v0.9)
-- Panel hat Tabs (Szene / Look / Leistung / System) + Schnellleiste (Zufall, Weiter, Ton, Pause) und Tageszeit-Chips.
-- Einstellungen: `autoSwitch`/`switchMinutes`/`switchRandom` (Szenen-Wechsler in `main.js`), `wallPaused` (manuell anhalten, nicht gespeichert), `hotkeys`.
-- Globale Kürzel: Strg+Alt+L Panel, →/R nächste/zufällige Szene, M Ton, P Pause. Tray-Menü spiegelt das.
+## Comfort features (v0.9)
+- The panel has tabs (Scene / Look / Performance / System) + a quick bar (random, next, sound, pause) and time-of-day chips.
+- Settings: `autoSwitch`/`switchMinutes`/`switchRandom` (scene switcher in `main.js`), `wallPaused` (manual pause, not persisted), `hotkeys`.
+- Global shortcuts: Ctrl+Alt+L panel, →/R next/random scene, M sound, P pause. The tray menu mirrors them.

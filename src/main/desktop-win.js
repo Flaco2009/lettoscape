@@ -1,5 +1,5 @@
-// Windows: Fenster hinter die Desktop-Icons haengen (WorkerW-Trick, wie Lively/Wallpaper Engine).
-// Unterstuetzt klassisches Windows 10/11 und das neue Layout ab Windows 11 24H2.
+// Windows: attach a window behind the desktop icons (WorkerW trick, like Lively/Wallpaper Engine).
+// Supports classic Windows 10/11 and the new layout from Windows 11 24H2.
 const koffi = require('koffi');
 
 const user32 = koffi.load('user32.dll');
@@ -34,19 +34,19 @@ function hwndOf(win) {
 function findDesktopLayer() {
   const progman = FindWindowW('Progman', null);
   if (!progman) return null;
-  // Explorer bitten, die WorkerW-Ebene hinter den Icons zu erzeugen
+  // Ask Explorer to create the WorkerW layer behind the icons
   const out = [0];
   SendMessageTimeoutW(progman, 0x052c, 0xd, 0x1, 0, 1000, out);
   SendMessageTimeoutW(progman, 0x052c, 0, 0, 0, 1000, out);
 
-  // Windows 11 24H2+: WorkerW ist ein Kind von Progman
+  // Windows 11 24H2+: WorkerW is a child of Progman
   const childWorker = FindWindowExW(progman, 0, 'WorkerW', null);
   if (childWorker) {
     const defView = FindWindowExW(progman, 0, 'SHELLDLL_DefView', null);
     return { mode: 'progman', parent: progman, defView, worker: childWorker };
   }
 
-  // Klassisch: WorkerW direkt nach dem Fenster mit SHELLDLL_DefView
+  // Classic: WorkerW right after the window with SHELLDLL_DefView
   let worker = 0;
   const cb = koffi.register((top) => {
     const dv = FindWindowExW(top, 0, 'SHELLDLL_DefView', null);
@@ -60,9 +60,9 @@ function findDesktopLayer() {
 }
 
 /**
- * Haengt ein Electron-Fenster als Wallpaper ein.
+ * Attaches an Electron window as the wallpaper.
  * @param {BrowserWindow} win
- * @param {{x:number,y:number,width:number,height:number}} rect physische Pixel relativ zum virtuellen Bildschirm
+ * @param {{x:number,y:number,width:number,height:number}} rect physical pixels relative to the virtual screen
  */
 function attach(win, rect) {
   const layer = findDesktopLayer();
@@ -70,7 +70,7 @@ function attach(win, rect) {
   const hwnd = hwndOf(win);
   SetParent(hwnd, layer.parent);
   if (layer.mode === 'progman') {
-    // unter die Icons (DefView), aber ueber die WorkerW-Ebene
+    // below the icons (DefView), but above the WorkerW layer
     SetWindowPos(hwnd, layer.defView || 1, rect.x, rect.y, rect.width, rect.height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     SetWindowPos(layer.worker, hwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   } else {
@@ -79,14 +79,14 @@ function attach(win, rect) {
   return true;
 }
 
-/** Aktueller System-Wallpaper-Pfad. */
+/** Current system wallpaper path. */
 function getWallpaper() {
   const buf = Buffer.alloc(520 * 2);
   SystemParametersInfoW(0x0073, 520, buf, 0); // SPI_GETDESKWALLPAPER
   return buf.toString('utf16le').split('\0')[0];
 }
 
-/** Setzt das System-Wallpaper (die Taskleiste faerbt sich nach diesem Bild). */
+/** Sets the system wallpaper (the taskbar takes its color from this image). */
 function setWallpaper(file) {
   const buf = Buffer.from(file + '\0', 'utf16le');
   return SystemParametersInfoW(0x0014, 0, buf, 0x1 | 0x2); // SPI_SETDESKWALLPAPER
@@ -94,7 +94,7 @@ function setWallpaper(file) {
 
 const DESKTOP_CLASSES = new Set(['Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', '']);
 
-/** true, wenn ein Vollbild-Programm (Spiel, Video) im Vordergrund ist. */
+/** true if a fullscreen program (game, video) is in the foreground. */
 function isForegroundFullscreen(displaysPhysical) {
   const fg = GetForegroundWindow();
   if (!fg) return false;
@@ -109,7 +109,7 @@ function isForegroundFullscreen(displaysPhysical) {
   );
 }
 
-// Unsichtbare ("cloaked") Fenster, z.B. auf anderen virtuellen Desktops oder versteckte UWP-Apps
+// Invisible ("cloaked") windows, e.g. on other virtual desktops or hidden UWP apps
 let DwmGetWindowAttribute = null;
 try {
   const dwm = koffi.load('dwmapi.dll');
@@ -126,14 +126,14 @@ const enumCallback = koffi.register((h) => { enumList.push(h); return true; }, k
 const IGNORE_CLASSES = new Set([...DESKTOP_CLASSES, 'Windows.UI.Core.CoreWindow', 'tooltips_class32', 'Shell_InputSwitchTopLevelWindow', 'NotifyIconOverflowWindow', 'XamlExplorerHostIslandWindow']);
 
 /**
- * Welche Bildschirme sind komplett verdeckt (maximiertes oder Vollbild-Fenster)?
- * Dann sieht man das Wallpaper dort nicht und es kann pausieren.
- * @param {{x,y,width,height}[]} works Arbeitsbereiche (ohne Taskleiste) in physischen Pixeln
- * @returns {boolean[]} pro Bildschirm: verdeckt ja/nein
+ * Which displays are completely covered (maximized or fullscreen window)?
+ * Then the wallpaper is not visible there and can pause.
+ * @param {{x,y,width,height}[]} works work areas (without taskbar) in physical pixels
+ * @returns {boolean[]} per display: covered yes/no
  */
 function coveredDisplays(works) {
   enumList = [];
-  EnumWindows(enumCallback, 0); // Reihenfolge: oberstes Fenster zuerst
+  EnumWindows(enumCallback, 0); // order: topmost window first
   const covered = works.map(() => false);
   const name = new Uint16Array(128);
   for (const h of enumList) {
@@ -160,15 +160,15 @@ function coveredDisplays(works) {
   return covered;
 }
 
-// Fenster, bei denen man "auf dem Desktop" ist: Desktop selbst, Taskleiste, Startmenue-Ueberlagerungen
+// Windows that count as "on the desktop": desktop itself, taskbar, start menu overlays
 const DESKTOP_LIKE = new Set(['Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'NotifyIconOverflowWindow',
   'TopLevelWindowForOverflowXamlIsland', 'Windows.UI.Core.CoreWindow', 'XamlExplorerHostIslandWindow', 'MultitaskingViewFrame',
   'ForegroundStaging', 'TaskListThumbnailWnd']);
 
 /**
- * Ist gerade der Desktop "aktiv" (kein anderes Programm im Vordergrund)?
- * Eigene Fenster (Panel, Menue-Ecke) zaehlen als Desktop, damit man Aenderungen live sieht.
- * Billig genug fuer eine Abfrage alle paar hundert Millisekunden.
+ * Is the desktop currently "active" (no other program in the foreground)?
+ * Our own windows (panel, menu corner) count as desktop so changes can be seen live.
+ * Cheap enough for a query every few hundred milliseconds.
  */
 function desktopActive(ownPid) {
   const fg = GetForegroundWindow();

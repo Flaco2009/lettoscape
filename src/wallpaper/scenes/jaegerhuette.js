@@ -1,4 +1,4 @@
-// Szene "Jägerhütte": Blockhütte im Wald, warmes Fensterlicht, Rauch aus dem Kamin.
+// Scene "Hunter's Cabin": log cabin in the forest, warm window light, smoke from the chimney.
 import { build } from './common.js';
 
 export default build(`
@@ -36,22 +36,22 @@ float sdObj(vec3 p, out float m) {
   vec3 q = toHut(p);
   if (length(q.xz) > 7.0 || q.y > 6.0) return max(length(q.xz) - 6.5, q.y - 5.5);
   float best = 1e9;
-  // Blockwaende (leicht gerundete Stamm-Rillen)
+  // Log walls (slightly rounded trunk grooves)
   float body = sdBox(q - vec3(0, 1.35, 0), vec3(2.4, 1.35, 1.8)) - 0.03 * abs(sin(q.y * 11.0));
   if (body < best) { best = body; m = 1.0; }
-  // ueberstehende Balkenenden an den Ecken
+  // protruding beam ends at the corners
   vec3 c = vec3(abs(q.x) - 2.4, q.y, abs(q.z) - 1.8);
   float ends = sdBox(vec3(c.x, mod(q.y, 0.29) - 0.145, c.z), vec3(0.18, 0.12, 0.18));
   ends = max(ends, q.y - 2.7);
   if (ends < best) { best = ends; m = 1.0; }
-  // Dach
+  // Roof
   float roof = sdGable(q - vec3(0, 2.7, 0), 3.0, 1.7, 2.25);
   roof = max(roof, -sdGable(q - vec3(0, 2.52, 0), 2.75, 1.55, 3.0));
   if (roof < best) { best = roof; m = 2.0; }
-  // Kamin
+  // Chimney
   float chim = sdBox(q - vec3(1.4, 4.1, 0.7), vec3(0.32, 1.0, 0.32));
   if (chim < best) { best = chim; m = 3.0; }
-  // Veranda + Holzstapel
+  // Porch + woodpile
   float deck = sdBox(q - vec3(0, 0.1, -2.4), vec3(2.6, 0.1, 0.6));
   if (deck < best) { best = deck; m = 1.0; }
   vec3 w = q - vec3(-3.2, 0.0, -0.6);
@@ -77,11 +77,11 @@ vec3 objAlbedo(float m, vec3 p, vec3 n) {
 }
 
 float windowMask(vec3 q) {
-  // Vorderseite (z = -1.8): zwei Fenster + Tuer
+  // Front (z = -1.8): two windows + door
   float front = step(abs(q.z + 1.8), 0.06);
   float win = step(abs(abs(q.x) - 1.4), 0.38) * step(abs(q.y - 1.55), 0.32);
   float door = step(abs(q.x), 0.42) * step(q.y, 1.85) * 0.18;
-  // Seitenfenster
+  // Side windows
   float side = step(abs(abs(q.x) - 2.4), 0.06) * step(abs(q.z), 0.4) * step(abs(q.y - 1.55), 0.3);
   return front * (win + door) + side;
 }
@@ -105,7 +105,7 @@ vec3 sceneLights(vec3 p, vec3 n) {
 vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
   col += pointGlow(ro, rd, t, fromHut(vec3(-1.4, 1.55, -1.9)), windowGlow(4.0), 0.9) * nightAmt * 0.7;
   col += pointGlow(ro, rd, t, fromHut(vec3(1.4, 1.55, -1.9)), windowGlow(5.0), 0.9) * nightAmt * 0.7;
-  // Kaminrauch
+  // Chimney smoke
   col = smokeColumn(ro, rd, t, col, fromHut(vec3(1.4, 5.1, 0.7)), 1.1, 0.2);
   return col;
 }

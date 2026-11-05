@@ -1,4 +1,4 @@
-// Szenen-Register. Neue Szene: Datei anlegen und hier eintragen.
+// Scene registry. New scene: create a file and register it here.
 import bergsee from './bergsee.js';
 import camping from './camping.js';
 import firewatch from './firewatch.js';
@@ -11,14 +11,14 @@ import kapelle from './kapelle.js';
 import leuchtturm from './leuchtturm.js';
 
 export const scenes = {
-  bergsee:      { name: 'Bergsee', shader: bergsee },
-  camping:      { name: 'Camping-Platz', shader: camping },
-  firewatch:    { name: 'Feuerwachturm', shader: firewatch },
-  schloss:      { name: 'Verlassenes Schloss', shader: schloss },
-  lichtung:     { name: 'Waldlichtung', shader: lichtung },
-  jaegerhuette: { name: 'Jägerhütte', shader: jaegerhuette },
-  muehle:       { name: 'Alte Mühle am Bach', shader: muehle },
-  bahnhof:      { name: 'Verlassener Bahnhof', shader: bahnhof },
-  kapelle:      { name: 'Waldrand-Kapelle', shader: kapelle },
-  leuchtturm:   { name: 'Leuchtturm an der Küste', shader: leuchtturm },
+  bergsee:      { name: 'Mountain Lake', shader: bergsee },
+  camping:      { name: 'Campsite', shader: camping },
+  firewatch:    { name: 'Fire Watchtower', shader: firewatch },
+  schloss:      { name: 'Abandoned Castle', shader: schloss },
+  lichtung:     { name: 'Forest Clearing', shader: lichtung },
+  jaegerhuette: { name: 'Hunter's Cabin', shader: jaegerhuette },
+  muehle:       { name: 'Old Mill by the Creek', shader: muehle },
+  bahnhof:      { name: 'Abandoned Station', shader: bahnhof },
+  kapelle:      { name: 'Chapel at the Forest Edge', shader: kapelle },
+  leuchtturm:   { name: 'Lighthouse on the Coast', shader: leuchtturm },
 };

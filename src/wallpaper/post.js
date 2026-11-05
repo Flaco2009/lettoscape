@@ -1,37 +1,37 @@
-// Lettoscape – Bild-Nachbearbeitung
+// Lettoscape – image post-processing
 //
-// Die Szene wird aus Spargruenden in geringerer Aufloesung gerechnet. Statt das Bild einfach
-// hochzuziehen (verpixelt/matschig), wird es hier rekonstruiert:
+// To save power the scene is rendered at a lower resolution. Instead of simply stretching the
+// image (pixelated/mushy), it is reconstructed here:
 //
-//  1. Jitter: jedes Bild wird um einen winzigen, wechselnden Sub-Pixel-Versatz verschoben gerechnet.
-//  2. Zeitliche Rekonstruktion (TAA-Upscaling): die Bilder werden in voller Aufloesung aufaddiert.
-//     Weil sich die Szenen kaum bewegen, entsteht so nach wenigen Bildern ein scharfes, glattes Bild
-//     mit deutlich mehr Details, als die niedrige Aufloesung hergibt.
-//     Gegen Schlieren bei Bewegung (Blaetter, Regen, Maus) wird der Verlauf auf die Farben der
-//     aktuellen Umgebung begrenzt (Neighborhood Clamping).
-//  3. Leichtes Nachschaerfen bei der Ausgabe.
-//  4. Szenenwechsel: die neue Szene "brennt" sich wie Glut ueber die alte ein und wird dabei
-//     sichtbar immer schaerfer – man sieht ihr beim Entstehen zu.
+//  1. Jitter: every frame is rendered with a tiny, changing sub-pixel offset.
+//  2. Temporal reconstruction (TAA upscaling): the frames are accumulated at full resolution.
+//     Since the scenes hardly move, after a few frames this yields a sharp, smooth image
+//     with far more detail than the low resolution provides.
+//     To avoid ghosting on motion (leaves, rain, mouse) the history is clamped to the colors
+//     of the current neighborhood (neighborhood clamping).
+//  3. Light sharpening on output.
+//  4. Scene change: the new scene "burns" in over the old one like an ember and visibly
+//     gets sharper – you watch it come into being.
 
 const VS = `#version 300 es
 in vec2 aPos;
 out vec2 vUv;
 void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
-// Durchgang A: aktuelles Bild + Verlauf -> neuer Verlauf (volle Aufloesung)
+// Pass A: current frame + history -> new history (full resolution)
 const RESOLVE_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
 out vec4 o;
-uniform sampler2D uCur;     // aktuelles Szenenbild (niedrige Aufloesung)
-uniform sampler2D uHist;    // bisheriger Verlauf (volle Aufloesung)
+uniform sampler2D uCur;     // current scene image (low resolution)
+uniform sampler2D uHist;    // history so far (full resolution)
 uniform vec2 uInRes;
 uniform vec2 uOutRes;
-uniform vec2 uJitter;       // Versatz des aktuellen Bildes in Eingangs-Pixeln
-uniform float uAlpha;       // Anteil des neuen Bildes
+uniform vec2 uJitter;       // offset of the current frame in input pixels
+uniform float uAlpha;       // share of the new frame
 uniform float uHasHist;
 
-// Catmull-Rom (bikubisch, scharf) mit 9 bilinearen Abtastungen
+// Catmull-Rom (bicubic, sharp) with 9 bilinear taps
 vec3 catmullRom(vec2 uv) {
   vec2 sp = uv * uInRes;
   vec2 t1 = floor(sp - 0.5) + 0.5;
@@ -57,7 +57,7 @@ vec3 catmullRom(vec2 uv) {
   return max(r, 0.0);
 }
 
-// Farbraum, in dem das Begrenzen besser funktioniert
+// Color space in which clamping works better
 vec3 toYCoCg(vec3 c) { return vec3(dot(c, vec3(0.25, 0.5, 0.25)), dot(c, vec3(0.5, 0.0, -0.5)), dot(c, vec3(-0.25, 0.5, -0.25))); }
 vec3 fromYCoCg(vec3 c) { return vec3(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z); }
 
@@ -66,7 +66,7 @@ void main() {
   vec3 cur = catmullRom(uv);
   if (uHasHist < 0.5) { o = vec4(cur, 1.0); return; }
 
-  // Farbbereich der Umgebung im aktuellen Bild (Mittelwert +- Streuung)
+  // Color range of the neighborhood in the current frame (mean +- spread)
   ivec2 ip = ivec2(uv * uInRes);
   ivec2 mx = ivec2(uInRes) - 1;
   vec3 m1 = vec3(0.0), m2 = vec3(0.0);
@@ -85,25 +85,25 @@ void main() {
   vec3 hist = texelFetch(uHist, ivec2(vUv * uOutRes), 0).rgb;
   vec3 h = toYCoCg(hist);
   vec3 hc = clamp(h, lo, hi);
-  // stark abweichender Verlauf (Bewegung) -> schneller auf das neue Bild gehen
+  // strongly deviating history (motion) -> move to the new frame faster
   float diff = length((h - hc) / max(hi - lo, vec3(0.02)));
   float a = clamp(uAlpha + diff * 0.25, uAlpha, 0.8);
   o = vec4(mix(fromYCoCg(hc), cur, a), 1.0);
 }`;
 
-// Durchgang B: Ausgabe auf den Bildschirm (Nachschaerfen + Einbrennen der neuen Szene)
+// Pass B: output to the screen (sharpening + burn-in of the new scene)
 const PRESENT_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
 out vec4 o;
-uniform sampler2D uImg;     // neuer Verlauf
-uniform sampler2D uOld;     // eingefrorenes Bild der vorherigen Szene
-uniform sampler2D uStill;   // Vorschaubild (solange die Szene noch nicht live ist)
+uniform sampler2D uImg;     // new history
+uniform sampler2D uOld;     // frozen image of the previous scene
+uniform sampler2D uStill;   // preview image (while the scene is not live yet)
 uniform float uUseStill;
-uniform float uFade;        // 1 = weich ueberblenden statt einbrennen
+uniform float uFade;        // 1 = blend softly instead of burning in
 uniform vec2 uOutRes;
 uniform float uSharp;
-uniform float uProg;        // Fortschritt des Szenenwechsels 0..1 (>= 1: fertig)
+uniform float uProg;        // progress of the scene change 0..1 (>= 1: done)
 uniform float uAspect;
 
 float hash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -121,7 +121,7 @@ void main() {
     c = texture(uStill, vUv).rgb;
   } else {
   c = texelFetch(uImg, p, 0).rgb;
-  // kontrastabhaengiges Nachschaerfen (wie AMD CAS, vereinfacht)
+  // contrast-adaptive sharpening (like AMD CAS, simplified)
   vec3 n = texelFetch(uImg, clamp(p + ivec2(0, 1), ivec2(0), mx), 0).rgb;
   vec3 s = texelFetch(uImg, clamp(p - ivec2(0, 1), ivec2(0), mx), 0).rgb;
   vec3 e = texelFetch(uImg, clamp(p + ivec2(1, 0), ivec2(0), mx), 0).rgb;
@@ -134,11 +134,11 @@ void main() {
   }
 
   if (uProg < 1.0 && uFade > 0.5) {
-    // Vorschaubild -> Live-Bild: sanft und unauffaellig
+    // preview image -> live image: gentle and unobtrusive
     vec3 old = texelFetch(uOld, p, 0).rgb;
     c = mix(old, c, smoothstep(0.0, 1.0, uProg));
   } else if (uProg < 1.0) {
-    // neue Szene brennt sich ueber die alte ein: von der Mitte unten nach aussen, mit Glutkante
+    // new scene burns in over the old one: from bottom center outwards, with an ember edge
     vec2 q = vec2((vUv.x - 0.5) * uAspect, vUv.y - 0.35);
     float field = length(q) * 0.9 + noise(vUv * vec2(uAspect, 1.0) * 5.0) * 0.45 + noise(vUv * vec2(uAspect, 1.0) * 23.0) * 0.12;
     float edge = uProg * 1.75 - 0.08;
@@ -175,7 +175,7 @@ function compile(gl, vs, fs) {
   return { p, u };
 }
 
-// Halton-Folge (2,3): gleichmaessig verteilte Sub-Pixel-Versaetze
+// Halton sequence (2,3): evenly distributed sub-pixel offsets
 function halton(i, b) { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; }
 const JITTER = Array.from({ length: 16 }, (_, i) => [halton(i + 1, 2) - 0.5, halton(i + 1, 3) - 0.5]);
 
@@ -236,10 +236,10 @@ export function createPost(gl) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  /** Versatz fuer das naechste Szenenbild (in Eingangs-Pixeln). */
+  /** Offset for the next scene frame (in input pixels). */
   function jitter() { return JITTER[frameNo % JITTER.length]; }
 
-  /** Szene in den Zwischenspeicher zeichnen lassen. */
+  /** Have the scene drawn into the intermediate buffer. */
   function bindScene() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFb);
     gl.viewport(0, 0, inW, inH);
@@ -247,11 +247,11 @@ export function createPost(gl) {
 
   function draw(prog) { gl.useProgram(prog); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 
-  /** Aktuelles Szenenbild verrechnen und ausgeben. alpha: Anteil des neuen Bildes (0..1). */
+  /** Blend the current scene frame and output it. alpha: share of the new frame (0..1). */
   function finish(alpha, sharp, now) {
     const [jx, jy] = jitter();
     const next = 1 - cur;
-    // A: Rekonstruktion
+    // A: reconstruction
     gl.bindFramebuffer(gl.FRAMEBUFFER, histFb[next]);
     gl.viewport(0, 0, outW, outH);
     gl.useProgram(resolve.p);
@@ -271,7 +271,7 @@ export function createPost(gl) {
     present(now, sharp, null);
   }
 
-  // Ausgabe auf den Bildschirm (oder in target, z.B. um das aktuelle Bild einzufrieren)
+  // Output to the screen (or into target, e.g. to freeze the current image)
   function present(now, sharp, target) {
     let prog = 1;
     if (trans.active && !target) {
@@ -297,18 +297,18 @@ export function createPost(gl) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  /** Nur ausgeben (keine Szene rechnen) – fuer das Vorschaubild. */
+  /** Output only (render no scene) – for the preview image. */
   function presentOnly(now, sharp) { present(now, sharp, null); }
 
-  /** Szenenwechsel: aktuell sichtbares Bild einfrieren, dann einbrennen (oder weich ueberblenden). */
+  /** Scene change: freeze the currently visible image, then burn in (or blend softly). */
   function beginTransition(now, fromBlack, fade = false) {
     if (fromBlack || (!hasHist && !useStill)) clear(oldFb, outW, outH);
-    else present(now, 0.6, oldFb);   // genau das, was gerade zu sehen ist
+    else present(now, 0.6, oldFb);   // exactly what is visible right now
     hasHist = false;
     trans = { active: true, t0: now, dur: fade ? 900 : 1700, fade };
   }
 
-  /** Vorschaubild sofort zeigen (einbrennen), bis die Szene live ist. */
+  /** Show the preview image at once (burn in) until the scene is live. */
   function showStill(img, now, fromBlack) {
     beginTransition(now, fromBlack, false);
     if (!stillTex) stillTex = gl.createTexture();
@@ -323,10 +323,10 @@ export function createPost(gl) {
     useStill = true;
   }
 
-  /** Vorschaubild verwerfen (nach beginTransition, das es schon eingefroren hat). */
+  /** Discard the preview image (after beginTransition, which has already frozen it). */
   function dropStill() { useStill = false; }
 
-  /** Vom Vorschaubild ins Live-Bild wechseln. */
+  /** Switch from the preview image to the live image. */
   function endStill(now) {
     if (!useStill) return false;
     beginTransition(now, false, true);
@@ -335,7 +335,7 @@ export function createPost(gl) {
   }
 
   function inTransition() { return trans.active; }
-  /** Verlauf verwerfen (z.B. grosser Sprung der Uhrzeit). */
+  /** Discard the history (e.g. big jump in time of day). */
   function reset() { hasHist = false; }
 
   return { setSize, jitter, bindScene, draw, finish, presentOnly, beginTransition, showStill, endStill, dropStill, inTransition, reset,

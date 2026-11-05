@@ -1,12 +1,12 @@
 [
-  { "id": "bergsee",    "name": "Bergsee",                   "ready": true  },
-  { "id": "camping",    "name": "Camping-Platz",             "ready": true  },
-  { "id": "firewatch",  "name": "Feuerwachturm",             "ready": true  },
-  { "id": "schloss",    "name": "Verlassenes Schloss",       "ready": true  },
-  { "id": "lichtung",   "name": "Waldlichtung",              "ready": true  },
-  { "id": "jaegerhuette","name": "Jägerhütte",               "ready": true  },
-  { "id": "muehle",     "name": "Alte Mühle am Bach",        "ready": true  },
-  { "id": "bahnhof",    "name": "Verlassener Bahnhof",       "ready": true  },
-  { "id": "kapelle",    "name": "Waldrand-Kapelle",          "ready": true  },
-  { "id": "leuchtturm", "name": "Leuchtturm an der Küste",   "ready": true  }
+  { "id": "bergsee",    "name": "Mountain Lake",                   "ready": true  },
+  { "id": "camping",    "name": "Campsite",             "ready": true  },
+  { "id": "firewatch",  "name": "Fire Watchtower",             "ready": true  },
+  { "id": "schloss",    "name": "Abandoned Castle",       "ready": true  },
+  { "id": "lichtung",   "name": "Forest Clearing",              "ready": true  },
+  { "id": "jaegerhuette","name": "Hunter's Cabin",               "ready": true  },
+  { "id": "muehle",     "name": "Old Mill by the Creek",        "ready": true  },
+  { "id": "bahnhof",    "name": "Abandoned Station",       "ready": true  },
+  { "id": "kapelle",    "name": "Chapel at the Forest Edge",          "ready": true  },
+  { "id": "leuchtturm", "name": "Lighthouse on the Coast",   "ready": true  }
 ]

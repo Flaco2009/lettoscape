@@ -1,4 +1,4 @@
-// Lettoscape – prozedurale Ambient-Sounds (Wind, Regen, Grillen). Keine Audiodateien noetig.
+// Lettoscape – procedural ambient sounds (wind, rain, crickets). No audio files needed.
 export class Ambience {
   constructor() {
     this.ctx = null;
@@ -48,7 +48,7 @@ export class Ambience {
     lfo.connect(lfoAmt).connect(windF.frequency);
     lfo.start();
 
-    // Wasser am Ufer
+    // Water on the shore
     const water = noise('brown');
     const waterF = ctx.createBiquadFilter();
     waterF.type = 'bandpass';
@@ -64,7 +64,7 @@ export class Ambience {
     wl.connect(wla).connect(waterG.gain);
     wl.start();
 
-    // Regen
+    // Rain
     const rain = noise('white');
     const rainF = ctx.createBiquadFilter();
     rainF.type = 'highpass';

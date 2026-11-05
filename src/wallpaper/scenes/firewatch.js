@@ -1,4 +1,4 @@
-// Szene "Feuerwachturm": Holzturm auf einem Waldhuegel, Blick ueber Huegelketten.
+// Scene "Fire Watchtower": wooden tower on a forested hill, view over ranges of hills.
 import { build } from './common.js';
 
 export default build(`
@@ -9,12 +9,12 @@ export default build(`
 #define LEAVES 0.25
 #define WAVE_DIR vec2(0.0)
 
-const vec3 TB = vec3(12.0, 22.0, 52.0); // Turmfuss
+const vec3 TB = vec3(12.0, 22.0, 52.0); // tower base
 
 float groundH(vec2 p, int oct) {
   float h = 2.0 + fbm(p * 0.011 + 3.0, oct > 5 ? 6 : 4) * 30.0;
   h += fbm(p * 0.06, 3) * 1.5;
-  // Tal zwischen Kamera und Turm
+  // valley between camera and tower
   h -= 12.0 * exp(-pow(p.y - 24.0, 2.0) / 120.0) * smoothstep(60.0, 10.0, abs(p.x));
   h = pad(h, p, vec2(0.0, -2.0), 8.0, 24.0);
   h = pad(h, p, TB.xz, 6.0, TB.y);
@@ -39,7 +39,7 @@ float sdObj(vec3 p, out float m) {
   float bound = length(q.xz) - 4.5;
   if (bound > 1.0 || q.y < -1.0 || q.y > 20.0) return max(max(bound, q.y - 19.0), max(-1.0 - q.y, 0.05));
   float best = 1e9;
-  // Beine + Ringe
+  // Legs + rings
   float legs = 1e9;
   for (int i = ZERO; i < 4; i++) {
     vec2 s = vec2(i == 0 || i == 3 ? 1.0 : -1.0, i < 2 ? 1.0 : -1.0);
@@ -48,14 +48,14 @@ float sdObj(vec3 p, out float m) {
   legs = min(legs, sdRing(q - vec3(0, 5.0, 0), 2.25, 0.12, 0.08));
   legs = min(legs, sdRing(q - vec3(0, 10.0, 0), 1.85, 0.12, 0.08));
   if (legs < best) { best = legs; m = 1.0; }
-  // Plattform + Gelaender
+  // Platform + railing
   float deck = sdBox(q - vec3(0, 15.05, 0), vec3(2.2, 0.08, 2.2));
   deck = min(deck, sdRing(q - vec3(0, 15.6, 0), 2.2, 0.06, 0.04));
   if (deck < best) { best = deck; m = 1.0; }
-  // Kabine
+  // Cabin
   float cab = sdBox(q - vec3(0, 16.35, 0), vec3(1.6, 1.25, 1.6));
   if (cab < best) { best = cab; m = 2.0; }
-  // Dach
+  // Roof
   float roof = sdPyramid(q - vec3(0, 17.55, 0), 2.1, 1.0);
   if (roof < best) { best = roof; m = 3.0; }
   return best;

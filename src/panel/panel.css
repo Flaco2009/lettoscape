@@ -90,7 +90,7 @@ h2 {
   color: var(--muted);
 }
 
-/* Szenen */
+/* Scenes */
 .scenes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .scene {
   position: relative;
@@ -112,12 +112,12 @@ h2 {
 .scene.active { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember) inset, 0 0 16px rgba(240,160,75,0.25); }
 .scene.soon { cursor: default; filter: saturate(0.35) brightness(0.7); }
 .scene.soon::after {
-  content: "bald"; position: absolute; top: 6px; right: 8px; font-size: 10px; color: var(--muted);
+  content: "soon"; position: absolute; top: 6px; right: 8px; font-size: 10px; color: var(--muted);
   background: rgba(0,0,0,0.45); padding: 1px 6px; border-radius: 6px;
 }
 .scene:not(.soon):hover { border-color: #5a4a3d; }
 
-/* Segment + Chips */
+/* Segment + chips */
 .seg, .chips { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .seg { background: var(--card); padding: 3px; border-radius: 10px; border: 1px solid var(--line); flex-wrap: nowrap; }
 .seg button {
@@ -131,7 +131,7 @@ h2 {
 }
 .chips button.on { border-color: var(--ember); background: rgba(240, 160, 75, 0.12); color: #ffdcb0; }
 
-/* Slider-Zeilen */
+/* Slider rows */
 .row { display: grid; grid-template-columns: 92px 1fr 46px; align-items: center; gap: 10px; margin: 6px 0 8px; }
 .row span { color: var(--text); }
 .row output { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -180,7 +180,7 @@ button:focus-visible, input:focus-visible + i { outline: 2px solid var(--ember);
 #pin.on svg path { fill: currentColor; fill-opacity: 0.25; }
 .hint { margin: 6px 0 2px; color: var(--muted); font-size: 11.5px; }
 
-/* Ladezustand der Szenen-Kacheln */
+/* Load state of the scene tiles */
 .scene.loading::after {
   content: ""; position: absolute; top: 8px; right: 8px; width: 12px; height: 12px; border-radius: 50%;
   border: 2px solid rgba(240, 160, 75, 0.3); border-top-color: var(--ember); animation: spin 0.9s linear infinite;
@@ -192,7 +192,7 @@ button:focus-visible, input:focus-visible + i { outline: 2px solid var(--ember);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Leistung */
+/* Performance */
 .seg.power button { font-size: 12.5px; }
 .live {
   display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; padding: 7px 10px;
@@ -212,7 +212,7 @@ details.adv[open] summary::before { content: "▾ "; }
 p.label { margin: 8px 0 6px; color: var(--text); }
 .seg[data-key="pauseMode"] button { font-size: 12px; padding: 7px 4px; }
 
-/* Schnellleiste + Tabs */
+/* Quick bar + tabs */
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px 16px 0; }
 .quick button {
   border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 8px 4px;

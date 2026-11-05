@@ -1,29 +1,29 @@
-# Feinschliff-Liste
+# Polish list
 
-Alle Szenen sind Rohversionen. Bekannte Punkte:
+All scenes are rough versions. Known items:
 
-## Allgemein
-- [x] Nadelbäume: Streifen entfernt, Wind + zerzauste Silhouette
-- [ ] Ganz nahe Bäume wirken noch etwas glatt
-- [x] Höhenlinien-Streifen (falsche Halbschatten durch Begrenzungsvolumen) behoben
-- [ ] Windows: Einhängen hinter die Desktop-Icons auf echtem System testen (auch 24H2)
-- [ ] Panel: Vorschaubilder statt Farbverläufe für Szenen
-- [ ] Linux-Version (X11 `type: 'desktop'`, Autostart-Datei ist schon da)
+## General
+- [x] Conifers: stripes removed, wind + tousled silhouette
+- [ ] Very close trees still look a bit smooth
+- [x] Contour stripes (false penumbra from bounding volumes) fixed
+- [ ] Windows: test attaching behind the desktop icons on a real system (also 24H2)
+- [x] Panel: preview images instead of color gradients for scenes
+- [ ] Linux version (X11 `type: 'desktop'`, autostart file already exists)
 
-## Szenen
-- [ ] Camping: Steinring kaum sichtbar, Flammen zu geometrisch, Tagsüber zu hell
-- [ ] Feuerwachturm: Treppe fehlt, Querverstrebungen
-- [ ] Schloss: Hügel wirkt kahl, mehr Ruinen-Details, Burg weiter oben im Bild
-- [ ] Waldlichtung: Krone der Eiche zu glatt/blobbig, Blumen auf der Wiese
-- [ ] Jägerhütte: Holzstapel unsauber (Rauch ✅)
-- [ ] Mühle: Haus zu nah an der Kamera, Wasser soll sichtbar fliessen
-- [ ] Bahnhof: Bahnsteig-Kante zu bläulich, mehr Bewuchs zwischen den Schwellen
-- [ ] Kapelle: Fenster-Bögen schärfer, Weg zur Tür
-- [ ] Leuchtturm: Lichtkegel verrauscht, Klippe zu glatt (Turm näher ✅)
+## Scenes
+- [ ] Campsite: stone ring barely visible, flames too geometric, too bright by day
+- [ ] Fire Watchtower: stairs missing, cross braces
+- [ ] Castle: hill looks bare, more ruin details, castle higher in the frame
+- [ ] Forest Clearing: oak crown too smooth/blobby, flowers on the meadow
+- [ ] Hunter's Cabin: woodpile untidy (smoke ✅)
+- [ ] Mill: house too close to the camera, water should visibly flow
+- [ ] Station: platform edge too bluish, more vegetation between the sleepers
+- [ ] Chapel: sharper window arches, path to the door
+- [ ] Lighthouse: light beam noisy, cliff too smooth (tower closer ✅)
 
-## Leben (v0.4)
-- Wind in Bäumen und Wiese, ziehende Wolkenschatten, Blumen
-- Fallende Blätter, Staub im Sonnenlicht, Sternschnuppen, Fledermäuse, Schmetterlinge
-- Fische (Ringe im Wasser), Rauch, Reh auf der Lichtung, Fahne auf der Burg, schwingende Glocke
-- Kamera "atmet" leicht
-- Ideen: Eichhörnchen, Eule mit leuchtenden Augen, Nordlichter im Winter, Gewitter mit Blitzen
+## Life (v0.4)
+- Wind in trees and meadow, drifting cloud shadows, flowers
+- Falling leaves, dust in sunlight, shooting stars, bats, butterflies
+- Fish (rings on the water), smoke, deer in the clearing, flag on the castle, swinging bell
+- Camera gently "breathes"
+- Ideas: squirrel, owl with glowing eyes, northern lights in winter, thunderstorm with lightning

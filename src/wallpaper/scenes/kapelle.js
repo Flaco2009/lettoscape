@@ -1,4 +1,4 @@
-// Szene "Waldrand-Kapelle": kleine Kapelle mit Glockenturm, Kerzenlicht in den Fenstern.
+// Scene "Chapel at the Forest Edge": small chapel with bell tower, candlelight in the windows.
 import { build } from './common.js';
 
 export default build(`
@@ -26,7 +26,7 @@ float groundH(vec2 p, int oct) {
 }
 
 float forestMask(vec2 p, float g) {
-  // Wald nur hinter und neben der Kapelle (Waldrand)
+  // Forest only behind and beside the chapel (forest edge)
   float edge = smoothstep(24.0, 30.0, p.y + fbm(vec2(p.x * 0.1, 0.0), 3) * 8.0);
   float sides = smoothstep(14.0, 20.0, abs(p.x));
   float m = max(edge, sides) * smoothstep(7.0, 11.0, length(p - K.xz));
@@ -45,7 +45,7 @@ float sdObj(vec3 p, out float m) {
     if (roof < best) { best = roof; m = 2.0; }
     vec3 t = q - vec3(0, 0.0, -3.5);
     float tower = sdBox(t - vec3(0, 2.65, 0), vec3(0.85, 2.65, 0.85));
-    // Glockenstube
+    // Belfry
     tower = max(tower, -sdBox(t - vec3(0, 4.55, 0), vec3(1.0, 0.38, 0.45)));
     tower = max(tower, -sdBox(t - vec3(0, 4.55, 0), vec3(0.45, 0.38, 1.0)));
     if (tower < best) { best = tower; m = 1.0; }
@@ -57,7 +57,7 @@ float sdObj(vec3 p, out float m) {
     if (spire < best) { best = spire; m = 2.0; }
     float cross = min(sdBox(t - vec3(0, 8.1, 0), vec3(0.04, 0.35, 0.04)), sdBox(t - vec3(0, 8.2, 0), vec3(0.22, 0.04, 0.04)));
     if (cross < best) { best = cross; m = 4.0; }
-    // Bank
+    // Bench
     float bench = sdBox(q - vec3(2.8, 0.45, -3.0), vec3(0.25, 0.05, 0.9));
     bench = min(bench, sdBox(vec3(q.x - 2.8, q.y - 0.22, abs(q.z + 3.0) - 0.75), vec3(0.2, 0.22, 0.05)));
     if (bench < best) { best = bench; m = 3.0; }
@@ -89,15 +89,15 @@ vec3 objEmit(float m, vec3 p, vec3 n) {
   if (m > 1.5) return vec3(0.0);
   vec3 q = toK(p);
   float e = 0.0;
-  // Seitenfenster
+  // Side windows
   if (abs(abs(q.x) - 1.8) < 0.06) {
     e += archWin(vec2(q.z, q.y), vec2(-0.8, 1.7), vec2(0.28, 0.5));
     e += archWin(vec2(q.z, q.y), vec2(1.2, 1.7), vec2(0.28, 0.5));
     e += archWin(vec2(q.z, q.y), vec2(3.0, 1.7), vec2(0.28, 0.5));
   }
-  // Tuer im Turm
+  // Door in the tower
   if (abs(q.z + 4.35) < 0.06) e += archWin(vec2(q.x, q.y), vec2(0.0, 0.7), vec2(0.38, 0.7)) * 0.7;
-  // rundes Fenster im Turm
+  // round window in the tower
   if (abs(q.z + 4.35) < 0.06) e += step(length(vec2(q.x, q.y - 2.9)), 0.28);
   float candle = 0.8 + 0.2 * noise(vec2(uTime * 4.0, q.z * 2.0));
   return windowGlow(1.0) * e * candle * 0.9;

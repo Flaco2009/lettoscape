@@ -1,7 +1,7 @@
-// Szene "Bergsee" – GLSL-Shader als String-Modul.
+// Scene "Mountain Lake" – GLSL shader as a string module.
 export default `#version 300 es
-// Lettoscape – Szene "Bergsee"
-// Raymarched Berge, See mit Spiegelung, Nadelwald, Tal-Nebel, Tag/Nacht, Wetter.
+// Lettoscape – scene "Mountain Lake"
+// Raymarched mountains, lake with reflection, conifer forest, valley fog, day/night, weather.
 precision highp float;
 out vec4 fragColor;
 
@@ -10,14 +10,14 @@ uniform float uTime;
 uniform float uHour;     // 0..24
 uniform float uRain;     // 0..1
 uniform float uSnow;     // 0..1
-uniform float uFog;      // 0..1  Tal-Nebel
-uniform float uClouds;   // 0..1  Bewoelkung
+uniform float uFog;      // 0..1  valley fog
+uniform float uClouds;   // 0..1  cloud cover
 uniform float uBright;   // 0.5..1.5
-uniform vec2  uMouse;    // -1..1 Parallax
+uniform vec2  uMouse;    // -1..1 parallax
 uniform float uQuality;
-uniform vec2  uJitter;   // Sub-Pixel-Versatz fuer die zeitliche Rekonstruktion (post.js)  // 0 = niedrig, 1 = hoch
+uniform vec2  uJitter;   // sub-pixel offset for the temporal reconstruction (post.js)  // 0 = low, 1 = high
 
-// ZERO: siehe common.js – verhindert Ausrollen von Schleifen (schnelleres Kompilieren unter Windows)
+// ZERO: see common.js – prevents loop unrolling (faster compiling on Windows)
 #define ZERO min(int(uRes.x), 0)
 
 const float PI = 3.14159265;
@@ -57,7 +57,7 @@ float ridged(vec2 p, int oct) {
   return s;
 }
 
-// ---------- Gelaende ----------
+// ---------- Terrain ----------
 float groundH(vec2 p, int oct) {
   float x = p.x, z = p.y;
   float hills = fbm(p * 0.018 + 3.0, 4) * 16.0 * smoothstep(60.0, 160.0, z);
@@ -77,12 +77,12 @@ float groundH(vec2 p, int oct) {
 float forestMask(vec2 p, float g) {
   float m = smoothstep(0.2, 1.2, g) * smoothstep(38.0, 22.0, g);
   m *= smoothstep(0.38, 0.6, fbm(p * 0.03 + 9.0, 3) + 0.2);
-  // freie Sicht direkt vor der Kamera
+  // clear view right in front of the camera
   m *= 1.0 - smoothstep(9.0, 4.0, length(vec2(p.x * 0.6, p.y - 1.0)));
   return m;
 }
 
-// Nadelbaeume als Kegel pro Zelle
+// Conifers as cones per cell
 float treeH(vec2 p, float g) {
   float m = forestMask(p, g);
   if (m < 0.02) return 0.0;
@@ -93,7 +93,7 @@ float treeH(vec2 p, float g) {
   float d = length(p - ctr);
   float th = 3.2 + hash(c + 3.9) * 3.4;
   float rad = th * 0.2;
-  // leicht gestufte Silhouette (Aeste)
+  // slightly tiered silhouette (branches)
   float k = 1.0 - d / rad;
   float cone = th * k + 0.05 * th * sin(k * 22.0) * k;
   return max(0.0, cone);
@@ -107,7 +107,7 @@ float sceneH(vec2 p, float t, out float g) {
   return g + treeH(p, g);
 }
 
-// ---------- Licht / Himmel ----------
+// ---------- Light / sky ----------
 vec3 sunDir, moonDir, lightDir, lightCol;
 float dayAmt, duskAmt, nightAmt;
 
@@ -139,7 +139,7 @@ vec3 skyBase(vec3 rd) {
   vec3 hor = mix(mix(horN, horD, dayAmt), horS, duskAmt * 0.75);
   float y = max(rd.y, 0.0);
   vec3 col = mix(hor, zen, pow(y, 0.45));
-  // Sonnenglanz am Horizont
+  // Sun glow at the horizon
   float sd = max(dot(rd, sunDir), 0.0);
   col += vec3(1.0, 0.55, 0.3) * pow(sd, 6.0) * (0.25 + duskAmt * 0.8) * smoothstep(-0.2, 0.0, sunDir.y);
   float overcast = smoothstep(0.4, 1.0, max(uClouds, max(uRain, uSnow) * 0.95));
@@ -150,7 +150,7 @@ vec3 skyBase(vec3 rd) {
 vec3 sky(vec3 rd, bool withClouds) {
   vec3 col = skyBase(rd);
   float overcast = smoothstep(0.4, 1.0, max(uClouds, max(uRain, uSnow) * 0.95));
-  // Sterne
+  // Stars
   if (nightAmt > 0.0 && rd.y > 0.0) {
     vec3 d = rd * 260.0;
     vec2 cell = floor(d.xy + d.z * 0.37);
@@ -161,20 +161,20 @@ vec3 sky(vec3 rd, bool withClouds) {
       float tw = 0.6 + 0.4 * sin(uTime * (1.0 + h * 5.0) + h * 100.0);
       col += vec3(0.85, 0.9, 1.0) * s * tw * nightAmt * (1.0 - overcast) * smoothstep(0.0, 0.15, rd.y) * 1.6;
     }
-    // Milchstrasse
+    // Milky Way
     float mw = fbm(rd.xy * 6.0 + rd.z * 3.0, 4);
     float band = exp(-pow((rd.x * 0.8 + rd.y * 0.6 - 0.35) * 3.0, 2.0));
     col += vec3(0.25, 0.25, 0.4) * band * mw * 0.12 * nightAmt * (1.0 - overcast);
   }
-  // Sonne
+  // Sun
   float sd = dot(rd, sunDir);
   col += vec3(1.0, 0.9, 0.7) * smoothstep(0.9993, 0.9997, sd) * 8.0 * (1.0 - overcast) * step(-0.02, sunDir.y);
-  // Mond
+  // Moon
   float md = dot(rd, moonDir);
   float moon = smoothstep(0.99955, 0.9997, md);
   col += vec3(0.9, 0.92, 1.0) * moon * 1.6 * nightAmt * (1.0 - overcast * 0.8);
   col += vec3(0.3, 0.35, 0.5) * pow(max(md, 0.0), 300.0) * 0.4 * nightAmt;
-  // Wolken
+  // Clouds
   if (withClouds && rd.y > 0.0) {
     vec2 uv = rd.xz / (rd.y + 0.08) * 1.4;
     uv += vec2(uTime * 0.012, uTime * 0.004);
@@ -253,16 +253,16 @@ vec3 shadeTerrain(vec3 p, vec3 rd, float t, float g, bool cheap) {
   vec3 treeC = mix(vec3(0.03, 0.08, 0.05), vec3(0.06, 0.13, 0.07), hash(floor(p.xz / 1.8)));
   float steep = smoothstep(0.82, 0.55, n.y);
   vec3 alb = mix(grass, rock, max(steep, smoothstep(25.0, 45.0, g)));
-  // ferner Wald ohne Geometrie
+  // distant forest without geometry
   alb = mix(alb, treeC * 1.1, fm * smoothstep(150.0, 260.0, t) * 0.85);
   alb = mix(alb, treeC, isTree);
-  // Schnee
+  // Snow
   float snowLine = mix(50.0, 6.0, uSnow) + fbm(p.xz * 0.02, 4) * 30.0;
   float snow = smoothstep(snowLine - 8.0, snowLine + 8.0, g) * smoothstep(0.3, 0.65, n.y);
   snow = max(snow, uSnow * smoothstep(0.5, 0.9, n.y) * (isTree > 0.5 ? 0.55 : 0.9));
   alb = mix(alb, vec3(0.88, 0.9, 0.95), snow);
 
-  // Licht
+  // Light
   float dif = max(dot(n, lightDir), 0.0);
   float sh = 1.0;
   if (!cheap && t < 160.0 && dif > 0.0 && length(lightCol) > 0.05) sh = softShadow(p + n * (0.3 + 0.002 * t), lightDir);
@@ -271,7 +271,7 @@ vec3 shadeTerrain(vec3 p, vec3 rd, float t, float g, bool cheap) {
   float ao = mix(0.55, 1.0, smoothstep(0.0, 3.0, tree)) ;
   ao = isTree > 0.5 ? mix(0.35, 1.0, clamp(tree / 6.0, 0.0, 1.0)) : 1.0;
   vec3 col = alb * (lightCol * dif * sh + amb * ao);
-  // Feuchter Glanz bei Regen
+  // Wet sheen in rain
   col += uRain * 0.04 * pow(max(dot(reflect(rd, n), lightDir), 0.0), 16.0) * lightCol;
   return col;
 }
@@ -282,7 +282,7 @@ vec3 applyFog(vec3 col, vec3 ro, vec3 rd, float t) {
   float f = 1.0 - exp(-t * dens);
   vec3 fc = fogColor(rd);
   col = mix(col, fc, f);
-  // Tal-Nebel (Hoehennebel) mit Animation
+  // Valley fog (height fog) with animation
   float b = 0.09;
   float a = 0.008 * (0.2 + uFog * 2.0);
   float ry = abs(rd.y) < 1e-4 ? 1e-4 : rd.y;
@@ -396,7 +396,7 @@ void main() {
     col = applyFog(col, ro, rd, t);
   } else if (tWater < tmax) {
     vec3 p = ro + rd * tWater;
-    // Wellen
+    // Waves
     float sp = uTime * (0.35 + uRain * 0.6);
     vec2 wp = p.xz * vec2(0.35, 0.9);
     float e = 0.05;
@@ -405,7 +405,7 @@ void main() {
     float wz = fbm((wp + vec2(0, e)) * 0.9 + sp, 4);
     float amp = (0.035 + uRain * 0.15) * exp(-tWater * 0.02);
     vec3 n = normalize(vec3(-(wx - w0) / e * amp, 1.0, -(wz - w0) / e * amp));
-    // Regentropfen-Ringe
+    // Raindrop rings
     if (uRain > 0.01) {
       vec2 rc = floor(p.xz * 1.2);
       vec2 rf = fract(p.xz * 1.2) - 0.5;
@@ -414,7 +414,7 @@ void main() {
       n.xz += normalize(rf + 1e-4) * ring * 0.15 * uRain;
       n = normalize(n);
     }
-    // springende Fische
+    // jumping fish
     {
       vec2 fc = floor(p.xz / 9.0);
       float fh = hash(fc + 41.0);
@@ -443,7 +443,7 @@ void main() {
     fres = mix(fres, 1.0, 0.55);
     vec3 water = vec3(0.01, 0.035, 0.04) * (0.3 + dayAmt);
     col = mix(water, refl * 0.92, fres);
-    // Mondlicht- / Sonnenpfad
+    // Moonlight / sun path
     float spec = pow(max(dot(rr, lightDir), 0.0), 400.0);
     col += lightCol * spec * 1.5;
     col = applyFog(col, ro, rd, tWater);
@@ -461,11 +461,11 @@ void main() {
   col *= uBright * 1.15;
   col = aces(col);
   col = pow(col, vec3(1.0 / 2.2));
-  // leichte S-Kurve + Saettigung fuer mehr Tiefe
+  // slight S-curve + saturation for more depth
   col = mix(col, col * col * (3.0 - 2.0 * col), 0.35);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, 1.12);
-  // Vignette + Korn
+  // Vignette + grain
   vec2 q = FC / uRes;
   col *= 0.55 + 0.45 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.18);
   col += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * 0.012;

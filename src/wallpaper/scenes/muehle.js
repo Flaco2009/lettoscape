@@ -1,4 +1,4 @@
-// Szene "Alte Mühle am Bach": Wassermuehle mit drehendem Rad, Bach, Laterne.
+// Scene "Old Mill by the Creek": water mill with a turning wheel, creek, lantern.
 import { build } from './common.js';
 
 export default build(`
@@ -10,8 +10,8 @@ export default build(`
 #define BUTTERFLIES 0.4
 #define WAVE_DIR vec2(0.0, -1.6)
 
-const vec3 M = vec3(7.4, 1.0, 17.0);   // Muehlenhaus
-const vec3 WC = vec3(5.05, 1.25, 17.0); // Radmitte
+const vec3 M = vec3(7.4, 1.0, 17.0);   // mill house
+const vec3 WC = vec3(5.05, 1.25, 17.0); // wheel center
 
 float creekX(float z) { return 2.6 * sin(z * 0.075) + 0.9; }
 
@@ -63,7 +63,7 @@ float sdObj(vec3 p, out float m) {
   if (roof < best) { best = roof; m = 3.0; }
   float wheel = sdWheel(p);
   if (wheel < best) { best = wheel; m = 4.0; }
-  // Laternenpfahl
+  // Lantern post
   float post = sdBox(q - vec3(-1.6, 1.2, -3.2), vec3(0.06, 1.2, 0.06));
   if (post < best) { best = post; m = 4.0; }
   float lamp = sdBox(q - vec3(-1.6, 2.55, -3.2), vec3(0.14, 0.17, 0.14));
@@ -81,7 +81,7 @@ vec3 objAlbedo(float m, vec3 p, vec3 n) {
     return mix(s, vec3(0.1, 0.17, 0.07), smoothstep(0.6, 0.0, q.y) * 0.7);
   }
   if (m < 2.5) {
-    // Fachwerk
+    // Half-timbering
     float beam = max(step(abs(fract(q.z * 0.8) - 0.5), 0.06), step(abs(q.y - 3.2), 0.07));
     return mix(vec3(0.72, 0.66, 0.55), vec3(0.2, 0.12, 0.07), beam);
   }

@@ -1,6 +1,6 @@
-// Lettoscape – Einstellungs-Panel
+// Lettoscape – settings panel
 (async function () {
-  // Im normalen Browser (Vorschau) eine Attrappe verwenden
+  // In a normal browser (preview) use a mock
   const api = window.lettoscape || mockApi();
 
   const SCENE_COLORS = {
@@ -20,14 +20,14 @@
   const status = { ...(initialStatus || {}) };
   let s = initial;
 
-  // ---- Szenen ----
+  // ---- Scenes ----
   const sceneBox = document.getElementById('scenes');
   for (const sc of scenes) {
     const b = document.createElement('button');
     b.className = 'scene' + (sc.ready ? '' : ' soon');
     b.dataset.id = sc.id;
     const c = SCENE_COLORS[sc.id] || ['#222', '#444', '#666'];
-    // echtes Vorschaubild (passend zur Tageszeit), Farbverlauf als Rueckfall
+    // real preview image (matching the time of day), gradient as fallback
     const h = new Date().getHours() + new Date().getMinutes() / 60;
     const slot = h >= 7.5 && h < 16.5 ? 'day' : ((h >= 16.5 && h < 20) || (h >= 5.5 && h < 7.5)) ? 'dusk' : 'night';
     b.style.backgroundImage = `url("../wallpaper/previews/${sc.id}-${slot}-thumb.jpg"), radial-gradient(60% 50% at 70% 80%, ${c[2]}66, transparent 70%), linear-gradient(160deg, ${c[0]}, ${c[1]})`;
@@ -52,7 +52,7 @@
   }
   document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
-  // ---- Schnellleiste ----
+  // ---- Quick bar ----
   const ids = scenes.filter((x) => x.ready).map((x) => x.id);
   const pickScene = (rand) => {
     const rest = ids.filter((x) => x !== s.scene);
@@ -67,7 +67,7 @@
     else set({ timeMode: 'fixed', hour: Number(b.dataset.t) });
   }));
 
-  // ---- Segmente / Chips ----
+  // ---- Segments / chips ----
   document.querySelectorAll('.seg, .chips').forEach((group) => {
     if (!group.dataset.key) return;
     const key = group.dataset.key;
@@ -96,22 +96,22 @@
     });
   });
 
-  // ---- Leistungsstufen ----
+  // ---- Power levels ----
   const PRESETS = {
     eco:      { fps: 20, renderScale: 0.45, quality: 'low' },
     balanced: { fps: 24, renderScale: 0.6,  quality: 'high' },
     beauty:   { fps: 30, renderScale: 0.85, quality: 'high' },
   };
   const POWER_HINT = {
-    eco: 'Kühl und leise. Ideal für Laptops.',
-    balanced: 'Guter Kompromiss aus Bild und Wärme.',
-    beauty: 'Volle Pracht, braucht eine starke Grafikkarte.',
-    custom: 'Eigene Einstellungen (siehe Erweitert).',
+    eco: 'Cool and quiet. Ideal for laptops.',
+    balanced: 'A good balance of looks and heat.',
+    beauty: 'Full splendor, needs a strong GPU.',
+    custom: 'Custom settings (see Advanced).',
   };
   document.querySelectorAll('#power button').forEach((b) => {
     b.addEventListener('click', () => set({ power: b.dataset.power, ...PRESETS[b.dataset.power] }));
   });
-  // Erweiterte Regler -> eigene Stufe
+  // Advanced controls -> custom level
   document.querySelectorAll('.adv .seg button, .adv input').forEach((el) => {
     el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'click', () => { if (s.power !== 'custom') set({ power: 'custom' }); });
   });
@@ -124,18 +124,18 @@
     box.classList.remove('warm', 'hot', 'idle');
     if (power.pausedAll || (stats && stats.paused)) {
       box.classList.add('idle');
-      const why = { manuell: 'von dir angehalten', gesperrt: 'Bildschirm gesperrt', abwesend: 'du bist weg', verdeckt: 'Desktop verdeckt', vollbild: 'Vollbild-App', app: 'App im Vordergrund' }[power.reason] || 'verdeckt';
-      t.textContent = (power.reason === 'app' || power.reason === 'manuell' ? 'Standbild' : 'Pausiert') + ' (' + why + ') · 0 % GPU';
+      const why = { manuell: 'paused by you', gesperrt: 'screen locked', abwesend: 'you are away', verdeckt: 'desktop covered', vollbild: 'fullscreen app', app: 'app in foreground' }[power.reason] || 'covered';
+      t.textContent = (power.reason === 'app' || power.reason === 'manuell' ? 'Still image' : 'Paused') + ' (' + why + ') · 0 % GPU';
       return;
     }
-    if (!stats) { t.textContent = 'Messe …'; return; }
+    if (!stats) { t.textContent = 'Measuring …'; return; }
     let txt = stats.fps + ' FPS · ' + stats.w + '×' + stats.h + (stats.outW ? ' → ' + stats.outW + '×' + stats.outH : '');
     if (stats.load !== null && stats.load !== undefined) {
       txt += ' · GPU ~' + stats.load + ' %';
       if (stats.load > stats.budget * 1.3) box.classList.add('hot');
       else if (stats.load > stats.budget * 0.9) box.classList.add('warm');
     }
-    if (stats.battery) txt += ' · Akku-Modus';
+    if (stats.battery) txt += ' · battery mode';
     t.textContent = txt;
   }
   if (api.onRenderStats) api.onRenderStats((st) => { stats = st; renderLive(); });
@@ -165,8 +165,8 @@
     });
     document.querySelectorAll('.toggle input').forEach((inp) => { inp.checked = !!s[inp.dataset.key]; });
     const q = (id, on, txt) => { const b = document.getElementById(id); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); if (txt) b.textContent = txt; };
-    q('qMute', !s.sound, s.sound ? '🔊 Ton an' : '🔇 Stumm');
-    q('qPause', !!s.wallPaused, s.wallPaused ? '▶ Weiter' : '⏸ Pause');
+    q('qMute', !s.sound, s.sound ? '🔊 Sound on' : '🔇 Muted');
+    q('qPause', !!s.wallPaused, s.wallPaused ? '▶ Resume' : '⏸ Pause');
     document.getElementById('switchOpts').classList.toggle('disabled', !s.autoSwitch);
     document.querySelectorAll('#timeChips button').forEach((b) => {
       b.classList.toggle('on', b.dataset.t === 'real' ? s.timeMode === 'real' : s.timeMode === 'fixed' && Math.abs(s.hour - Number(b.dataset.t)) < 0.01);
@@ -177,19 +177,19 @@
     const pin = document.getElementById('pin');
     pin.classList.toggle('on', !!s.panelPinned);
     pin.setAttribute('aria-pressed', String(!!s.panelPinned));
-    pin.title = s.panelPinned ? 'Angepinnt: bleibt offen (Klick zum Lösen)' : 'Anpinnen: Panel bleibt offen';
+    pin.title = s.panelPinned ? 'Pinned: stays open (click to unpin)' : 'Pin: keep panel open';
     const sc = scenes.find((x) => x.id === s.scene);
-    // Ladezustand je Szene
+    // Load state per scene
     document.querySelectorAll('.scene').forEach((el) => {
       const st = status[el.dataset.id];
       el.classList.toggle('loading', !!st && (st.state === 'loading' || st.state === 'lost') && !st.background);
       el.classList.toggle('failed', !!st && st.state === 'error');
-      el.title = st && st.state === 'error' ? 'Fehler beim Laden: ' + st.error : '';
+      el.title = st && st.state === 'error' ? 'Failed to load: ' + st.error : '';
     });
     const cs = status[s.scene];
-    let line = (sc ? sc.name : '') + ' · ' + (s.timeMode === 'real' ? 'echte Uhrzeit' : fmt.clock(s.hour));
-    if (cs && (cs.state === 'loading' || cs.state === 'lost')) line = (sc ? sc.name : 'Szene') + ' wird vorbereitet …';
-    if (cs && cs.state === 'error') line = (sc ? sc.name : 'Szene') + ': Fehler beim Laden';
+    let line = (sc ? sc.name : '') + ' · ' + (s.timeMode === 'real' ? 'real time' : fmt.clock(s.hour));
+    if (cs && (cs.state === 'loading' || cs.state === 'lost')) line = (sc ? sc.name : 'Scene') + ' is getting ready …';
+    if (cs && cs.state === 'error') line = (sc ? sc.name : 'Scene') + ': failed to load';
     document.getElementById('status').textContent = line;
   }
 
@@ -197,7 +197,7 @@
   async function set(patch, throttle) {
     s = { ...s, ...patch };
     if (!throttle) { render(); s = await api.setSettings(patch); render(); return; }
-    // Slider: nicht jedes Pixel sofort speichern
+    // Slider: do not save every pixel at once
     pending = { ...(pending || {}), ...patch };
     if (set._t) return;
     set._t = setTimeout(async () => {
@@ -216,7 +216,7 @@
   document.getElementById('ver').textContent = 'v' + version;
   if (platform === 'linux') {
     const t = document.querySelector('[data-key="autostart"]').previousElementSibling;
-    t.textContent = 'Beim Login starten';
+    t.textContent = 'Start at login';
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') api.hidePanel(); });
 
@@ -230,7 +230,7 @@
       autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: true, power: 'balanced', batterySaver: true, autoPerformance: true, pauseMode: 'desktop', taskbarSync: true, autoSwitch: false, switchMinutes: 15, switchRandom: true, hotkeys: true, wallPaused: false,
     };
     let st = { ...defaults };
-    const names = ['Bergsee', 'Camping-Platz', 'Feuerwachturm', 'Verlassenes Schloss', 'Waldlichtung', 'Jägerhütte', 'Alte Mühle am Bach', 'Verlassener Bahnhof', 'Waldrand-Kapelle', 'Leuchtturm an der Küste'];
+    const names = ['Mountain Lake', 'Campsite', 'Fire Watchtower', 'Abandoned Castle', 'Forest Clearing', "Hunter's Cabin", 'Old Mill by the Creek', 'Abandoned Station', 'Chapel at the Forest Edge', 'Lighthouse on the Coast'];
     const ids = ['bergsee', 'camping', 'firewatch', 'schloss', 'lichtung', 'jaegerhuette', 'muehle', 'bahnhof', 'kapelle', 'leuchtturm'];
     return {
       getSettings: async () => ({ settings: st, scenes: ids.map((id, i) => ({ id, name: names[i], ready: true })), version: '0.1.0', platform: 'win32' }),

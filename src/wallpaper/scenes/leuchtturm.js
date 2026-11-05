@@ -1,4 +1,4 @@
-// Szene "Leuchtturm an der Waldküste": Klippe mit Leuchtturm, drehender Lichtkegel, Meer.
+// Scene "Lighthouse on the Coast": cliff with lighthouse, rotating light beam, sea.
 import { build } from './common.js';
 
 export default build(`
@@ -20,7 +20,7 @@ float headland(vec2 p) {
 float groundH(vec2 p, int oct) {
   float hm = headland(p);
   float h = -4.0 + hm * (13.0 + fbm(p * 0.03, 5) * 7.0);
-  // Felsen im Vordergrund (Standplatz)
+  // Rocks in the foreground (vantage point)
   float rocks = smoothstep(6.0, 1.5, length((p - vec2(-1.0, -1.0)) * vec2(0.7, 1.0)));
   h = max(h, -4.0 + rocks * (5.6 + fbm(p * 0.6, 4) * 1.2));
   h = pad(h, p, LH.xz, 5.0, LH.y);
@@ -49,7 +49,7 @@ float sdObj(vec3 p, out float m) {
   float cap = sdCappedCone(q - vec3(0, 10.75, 0), 0.32, 0.95, 0.12);
   cap = min(cap, sdSphere(q - vec3(0, 11.15, 0), 0.14));
   if (cap < best) { best = cap; m = 2.0; }
-  // Waerterhaus
+  // Keeper's house
   vec3 h = q - vec3(3.6, 0.0, -0.5);
   float house = sdBox(h - vec3(0, 1.1, 0), vec3(1.3, 1.1, 1.8));
   if (house < best) { best = house; m = 4.0; }
@@ -85,7 +85,7 @@ vec3 sceneLights(vec3 p, vec3 n) { return pointLight(p, n, LAMP, vec3(1.0, 0.85,
 vec3 sceneVolume(vec3 ro, vec3 rd, float t, vec3 col) {
   float vis = 0.25 + nightAmt + duskAmt * 0.4;
   col += pointGlow(ro, rd, t, LAMP, vec3(1.0, 0.85, 0.55), 2.2) * vis;
-  // drehender Lichtkegel (zwei Seiten)
+  // rotating light beam (two sides)
   float a = uTime * 0.55;
   vec3 b = normalize(vec3(cos(a), -0.015, sin(a)));
   float tm = min(t, 420.0);

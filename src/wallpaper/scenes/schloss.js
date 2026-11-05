@@ -1,4 +1,4 @@
-// Szene "Verlassenes Schloss": Burgruine auf einem Huegel, Mondlicht, ein letztes Laternenlicht.
+// Scene "Abandoned Castle": castle ruin on a hill, moonlight, one last lantern light.
 import { build } from './common.js';
 
 export default build(`
@@ -33,34 +33,34 @@ float sdObj(vec3 p, out float m) {
   vec3 q = p - C;
   float bound = max(length(q.xz - vec2(-3.0, 0.0)) - 14.0, q.y - 21.0);
   if (bound > 1.0) return bound;
-  // Bergfried mit Zinnen
+  // Keep with battlements
   float r = length(q.xz);
   float a = atan(q.z, q.x);
   float merl = step(0.5, fract(a * 1.9099));
   float keep = max(r - 3.2, max(-q.y - 1.0, q.y - (16.0 + 0.8 * merl)));
   keep = max(keep, -max(r - 2.6, 15.5 - q.y));
-  // Schiessscharten
+  // Arrow slits
   vec3 k = q;
   float sa = floor(a / (PI / 3.0) + 0.5) * (PI / 3.0);
   k.xz = rot2(sa) * k.xz;
   float slit = sdBox(vec3(k.x - 3.2, mod(k.y, 4.5) - 2.6, k.z), vec3(0.6, 0.5, 0.12));
   keep = max(keep, -slit);
-  // Mauer mit Tor, oben zerfallen
+  // Wall with gate, crumbled at the top
   float wall = sdBox(q - vec3(-5.5, 2.5, 0.0), vec3(4.8, 3.5, 0.45));
   wall = max(wall, q.y - (4.0 + 1.6 * noise(vec2(q.x * 0.9, 1.0)) - 0.8 * smoothstep(-6.0, -9.5, q.x)));
   wall = max(wall, -sdBox(q - vec3(-4.0, 1.2, 0.0), vec3(0.8, 1.6, 1.0)));
   wall = max(wall, -sdCyl((q - vec3(-4.0, 2.8, 0.0)).xzy, 0.8, 1.0));
-  // Kleiner, eingestuerzter Turm
+  // Small collapsed tower
   vec3 t = q - vec3(-10.8, 0.0, 0.6);
   float tower = max(length(t.xz) - 2.1, max(-t.y - 1.0, t.y - (6.0 + 2.2 * sin(t.x * 1.3 + t.z * 0.7) + 1.5 * noise(t.xz * 2.0))));
   tower = max(tower, -max(length(t.xz) - 1.6, 1.0 - t.y));
-  // Herabgefallene Steine
+  // Fallen stones
   float rubble = sdSphere(q - vec3(-7.5, -0.3, 2.2), 0.7);
   rubble = min(rubble, sdSphere(q - vec3(-8.6, -0.4, 1.4), 0.5));
   rubble = min(rubble, sdBox(q - vec3(-2.0, 0.1, 2.6), vec3(0.5, 0.35, 0.4)));
   float d = min(min(keep, wall), min(tower, rubble));
   m = 1.0;
-  // Fahnenmast + flatternde Fahne
+  // Flagpole + fluttering flag
   float pole = sdCapsule(q, vec3(0.0, 16.0, 0.0), vec3(0.0, 20.2, 0.0), 0.06);
   vec3 fq = q - vec3(0.0, 19.4, 0.0);
   fq.xz = rot2(-0.35) * fq.xz;
@@ -77,23 +77,23 @@ vec3 objAlbedo(float m, vec3 p, vec3 n) {
   vec3 q = p - C;
   if (m > 2.5) return vec3(0.1, 0.09, 0.08);
   if (m > 1.5) {
-    // Fahne: tiefrot mit goldenem Streifen
+    // Flag: deep red with a golden stripe
     float stripe = step(abs(q.y - 19.4), 0.09);
     return mix(vec3(0.5, 0.08, 0.07), vec3(0.85, 0.65, 0.2), stripe);
   }
-  // Steinquader
+  // Stone blocks
   vec2 b = vec2(q.x + q.z, q.y) * vec2(1.4, 2.6);
   b.x += floor(b.y) * 0.5;
   float joint = smoothstep(0.04, 0.09, min(fract(b.x), fract(b.y)));
   vec3 stone = mix(vec3(0.3, 0.3, 0.31), vec3(0.42, 0.4, 0.37), hash(floor(b)));
   stone *= 0.75 + 0.25 * joint;
-  // Efeu / Moos von unten
+  // Ivy / moss from below
   float ivy = smoothstep(0.45, 0.7, fbm(q.xy * 0.6 + q.z * 0.3, 4)) * smoothstep(8.0, 1.0, q.y);
   return mix(stone, vec3(0.08, 0.16, 0.06), ivy);
 }
 
 vec3 objEmit(float m, vec3 p, vec3 n) {
-  // ein warmes Fenster im Bergfried
+  // one warm window in the keep
   vec3 q = p - C;
   float w = step(abs(q.y - 11.3), 0.5) * step(abs(atan(q.z, q.x) + 1.5708), 0.16) * step(2.5, length(q.xz));
   return windowGlow(4.0) * w * 0.9;

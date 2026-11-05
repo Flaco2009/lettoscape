@@ -1,4 +1,4 @@
-// Lettoscape – Wallpaper-Renderer (WebGL2, Vollbild-Shader)
+// Lettoscape – wallpaper renderer (WebGL2, fullscreen shader)
 import { scenes } from './scenes/index.js';
 import { Ambience } from './audio.js';
 import { createPost } from './post.js';
@@ -7,11 +7,11 @@ const canvas = document.getElementById('c');
 const errBox = document.getElementById('err');
 const gl = canvas.getContext('webgl2', { antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
 
-const api = window.lettoscape; // aus preload.js (fehlt im normalen Browser)
+const api = window.lettoscape; // from preload.js (missing in a normal browser)
 
-// Fallback fuer Tests im Browser: ?hour=20&weather=rain ...
+// Fallback for tests in the browser: ?hour=20&weather=rain ...
 const params = new URLSearchParams(location.search);
-const previewMode = params.get('preview') === '1'; // Vorschaubilder erzeugen (tools/make-previews.js)
+const previewMode = params.get('preview') === '1'; // generate preview images (tools/make-previews.js)
 let settings = {
   scene: params.get('scene') || 'bergsee',
   timeMode: params.has('hour') ? 'fixed' : 'real',
@@ -47,25 +47,25 @@ let prog = null, uni = {}, currentScene = null, currentId = null;
 const UNIFORMS = ['uRes', 'uTime', 'uHour', 'uRain', 'uSnow', 'uFog', 'uClouds', 'uBright', 'uMouse', 'uQuality', 'uJitter'];
 
 function fail(msg) {
-  // Vollbild-Fehler nur, wenn gar nichts angezeigt werden kann
+  // Fullscreen error only if nothing can be shown at all
   console.error(msg);
   if (prog) return;
   errBox.textContent = 'Lettoscape: ' + msg;
   errBox.style.display = 'grid';
 }
 
-// ---------- Szenen laden ----------
-// Die Shader sind gross. Unter Windows (Direct3D) kann das Kompilieren einige Sekunden dauern.
-// Deshalb:
-//  - KHR_parallel_shader_compile: kompiliert im Hintergrund, die alte Szene laeuft weiter
-//  - fertige Szenen bleiben im Speicher -> Zurueckwechseln ist sofort da
-//  - nach dem Start werden die uebrigen Szenen nach und nach im Hintergrund vorbereitet
-//  - Status (laedt / bereit / Fehler) geht ans Panel
+// ---------- Loading scenes ----------
+// The shaders are big. On Windows (Direct3D) compiling can take several seconds.
+// Therefore:
+//  - KHR_parallel_shader_compile: compiles in the background, the old scene keeps running
+//  - finished scenes stay in memory -> switching back is instant
+//  - after startup the remaining scenes are prepared in the background, one by one
+//  - status (loading / ready / error) goes to the panel
 const parallel = gl && gl.getExtension('KHR_parallel_shader_compile');
 const cache = new Map();   // id -> { p, uni }
 const jobs = new Map();    // id -> { p, vs, fs, t0, fg }
-const failed = new Map();  // id -> Fehlertext
-const retries = new Map(); // id -> Anzahl Neuversuche (bei voruebergehenden GPU-Fehlern)
+const failed = new Map();  // id -> error text
+const retries = new Map(); // id -> number of retries (on transient GPU errors)
 let wantedId = null;
 let warmTimer = null;
 
@@ -91,7 +91,7 @@ function startJob(id, fg) {
   gl.linkProgram(p);
   jobs.set(id, { p, vs, fs, t0: performance.now(), fg });
   report(id, 'loading', { background: !fg });
-  if (!parallel) pollJobs(); // ohne Extension: synchron
+  if (!parallel) pollJobs(); // without the extension: synchronous
 }
 
 function pollJobs() {
@@ -100,27 +100,27 @@ function pollJobs() {
     jobs.delete(id);
     const ms = Math.round(performance.now() - job.t0);
     const { p, vs, fs } = job;
-    if (gl.isContextLost()) continue; // wird nach dem Wiederherstellen neu geladen
+    if (gl.isContextLost()) continue; // is reloaded after restoring
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
       const raw = (gl.getShaderInfoLog(fs) || gl.getProgramInfoLog(p) || '').trim();
       gl.deleteProgram(p);
       gl.deleteShader(vs);
       gl.deleteShader(fs);
-      // Ohne Fehlertext war es meist ein voruebergehender GPU-Fehler -> spaeter nochmal versuchen
+      // Without an error text it was usually a transient GPU error -> try again later
       const n = retries.get(id) || 0;
       if ((!raw || /context|lost|timeout|out of memory/i.test(raw)) && n < 3) {
         retries.set(id, n + 1);
-        console.warn(`Szene ${id}: voruebergehender GPU-Fehler, neuer Versuch ${n + 1}/3`);
+        console.warn(`Scene ${id}: transient GPU error, retry ${n + 1}/3`);
         report(id, 'loading', { background: id !== wantedId, retry: n + 1 });
         setTimeout(() => { if (!gl.isContextLost()) startJob(id, id === wantedId); }, 1500 * (n + 1));
         continue;
       }
-      const log = raw || 'unbekannter GPU-Fehler';
+      const log = raw || 'unknown GPU error';
       failed.set(id, log);
-      console.error(`Szene ${id}: Shader-Fehler nach ${ms} ms`, log);
+      console.error(`Scene ${id}: shader error after ${ms} ms`, log);
       report(id, 'error', { ms, error: log.slice(0, 400) });
       if (!job.fg) scheduleWarmup(2000);
-      if (id === wantedId) fail(`Szene "${scenes[id].name}" konnte nicht geladen werden.\n${log.slice(0, 300)}`);
+      if (id === wantedId) fail(`Scene "${scenes[id].name}" could not be loaded.\n${log.slice(0, 300)}`);
       continue;
     }
     gl.detachShader(p, vs);
@@ -131,15 +131,15 @@ function pollJobs() {
     for (const n of UNIFORMS) u[n] = gl.getUniformLocation(p, n);
     cache.set(id, { p, uni: u });
     retries.delete(id);
-    console.info(`Szene ${id} bereit nach ${ms} ms`);
+    console.info(`Scene ${id} ready after ${ms} ms`);
     report(id, 'ready', { ms });
     if (!job.fg) scheduleWarmup(Math.max(800, Math.min(ms, 20000)));
     if (id === wantedId) activate(id);
   }
 }
 
-// Kein Ladebildschirm: die alte Szene laeuft weiter, bis die neue fertig ist.
-// Dann brennt sich die neue Szene ein und wird dabei sichtbar immer schaerfer (siehe post.js).
+// No loading screen: the old scene keeps running until the new one is ready.
+// Then the new scene burns in and visibly gets sharper (see post.js).
 let buildT0 = -1e9;
 let stillId = null;
 function activate(id) {
@@ -156,7 +156,7 @@ function activate(id) {
   if (post && !previewMode) {
     const now = performance.now();
     if (post.showingStill && stillId === id) {
-      // Vorschaubild war schon da -> unauffaellig ins Live-Bild uebergehen
+      // Preview image was already shown -> blend unobtrusively into the live image
       post.endStill(now);
       buildT0 = -1e9;
     } else {
@@ -169,16 +169,16 @@ function activate(id) {
   }
 }
 
-// ---------- Vorschaubilder ----------
-// Fuer jede Szene liegen fertige Bilder (Tag/Abend/Nacht) bei. Klickt man eine Szene an, die noch
-// nicht kompiliert ist, erscheint sofort das Bild – die Szene wird live, sobald der Shader fertig ist.
+// ---------- Preview images ----------
+// Every scene ships with ready-made images (day/dusk/night). When you click a scene that is not
+// compiled yet, the image appears at once – the scene goes live as soon as the shader is ready.
 const previewImgs = new Map();
 function previewSlot(h) {
   if (h >= 7.5 && h < 16.5) return 'day';
   if ((h >= 16.5 && h < 20) || (h >= 5.5 && h < 7.5)) return 'dusk';
   return 'night';
 }
-// Bilder fuer die aktuelle Tageszeit schon vorab laden, damit ein Klick sofort ein Bild zeigt
+// Preload the images for the current time of day so a click shows an image immediately
 let previewsWarm = false;
 function warmPreviews() {
   if (previewsWarm || previewMode) return;
@@ -196,7 +196,7 @@ function showPreview(id) {
     if (wantedId !== id || cache.has(id) || gl.isContextLost()) return;
     post.showStill(img, performance.now(), !prog && !post.showingStill);
     stillId = id;
-    currentId = null;     // die alte Szene wird nicht mehr gerechnet
+    currentId = null;     // the old scene is no longer rendered
   };
   if (img && img.complete && img.naturalWidth) { go(); return; }
   if (!img) { img = new Image(); previewImgs.set(url, img); img.src = url; }
@@ -207,7 +207,7 @@ function loadScene(id) {
   if (!scenes[id]) id = 'bergsee';
   wantedId = id;
   if (cache.has(id)) { activate(id); return; }
-  // ausdruecklich gewaehlt: auch nach einem frueheren Fehler nochmal versuchen
+  // explicitly chosen: try again even after an earlier error
   failed.delete(id);
   retries.delete(id);
   startJob(id, true);
@@ -215,10 +215,10 @@ function loadScene(id) {
   setTimeout(warmPreviews, 1500);
 }
 
-// Uebrige Szenen im Hintergrund vorbereiten, eine nach der anderen.
-// Getaktet: nach jeder Szene so lange Pause, wie das Kompilieren gedauert hat (max. halbe Last).
-// Beim ersten Start dauert das etwas, danach kommen die Shader aus dem Cache auf der Festplatte
-// und alle Szenen sind nach wenigen Sekunden bereit.
+// Prepare the remaining scenes in the background, one after another.
+// Paced: after each scene pause as long as compiling took (max. half load).
+// The first start takes a while, afterwards the shaders come from the disk cache
+// and all scenes are ready after a few seconds.
 let lastBgMs = 0;
 function scheduleWarmup(delay = 3000) {
   clearTimeout(warmTimer);
@@ -232,9 +232,9 @@ function scheduleWarmup(delay = 3000) {
   }, delay);
 }
 
-if (!gl) fail('WebGL2 wird von deiner Grafikkarte/deinem Treiber nicht unterstuetzt.');
+if (!gl) fail('WebGL2 is not supported by your GPU/driver.');
 
-// GPU-Absturz / Treiber-Reset: Bild selbst wiederherstellen
+// GPU crash / driver reset: restore the picture on our own
 canvas.addEventListener('webglcontextlost', (e) => {
   e.preventDefault();
   console.warn('WebGL-Kontext verloren');
@@ -252,7 +252,7 @@ canvas.addEventListener('webglcontextrestored', () => {
   loadScene(wantedId || settings.scene);
 });
 
-// Vollbild-Dreieck
+// Fullscreen triangle
 function initGeometry() {
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -263,19 +263,19 @@ function initGeometry() {
 if (gl) initGeometry();
 let post = gl ? createPost(gl) : null;
 
-// ---------- Aufloesung + GPU-Budget ----------
-// Gerendert wird in geringerer Aufloesung und hochskaliert (die Szenen sind weich, das faellt kaum auf).
-// Zusaetzlich:
-//  - feste Obergrenze fuer die Pixelzahl je Leistungsstufe (4K-Laptops rechnen sonst 4x so viel)
-//  - dynScale: wird automatisch kleiner, wenn das Wallpaper mehr GPU-Zeit braucht als erlaubt
+// ---------- Resolution + GPU budget ----------
+// Rendering happens at a lower resolution and is upscaled (the scenes are soft, hardly noticeable).
+// In addition:
+//  - fixed pixel cap per power level (4K laptops would otherwise render 4x as much)
+//  - dynScale: shrinks automatically when the wallpaper needs more GPU time than allowed
 let dynScale = 1;
-let fpsLimit = 60;   // wird gesenkt, wenn die Aufloesung schon am Minimum ist
+let fpsLimit = 60;   // lowered when the resolution is already at the minimum
 const MIN_DYN = 0.55;
 function maxPixels() {
   const b = settings.gpuBudget ?? 0.25;
   return b <= 0.15 ? 0.45e6 : b <= 0.3 ? 0.9e6 : b <= 0.45 ? 1.4e6 : 2.1e6;
 }
-// Aufbau nach Szenenwechsel: erst grob, dann immer feiner
+// Build-up after a scene change: coarse first, then ever finer
 const BUILD_STEPS = [0.3, 0.45, 0.65, 0.85, 1];
 function buildMul(now) {
   const i = Math.floor((now - buildT0) / 320);
@@ -284,7 +284,7 @@ function buildMul(now) {
 let lastBuild = 1;
 
 function resize() {
-  // Ausgabe: volle Bildschirmaufloesung (gedeckelt bei ~1440p, darueber skaliert der Browser)
+  // Output: full screen resolution (capped at ~1440p, above that the browser scales)
   let ow = window.innerWidth * devicePixelRatio;
   let oh = window.innerHeight * devicePixelRatio;
   const oc = Math.min(1, Math.sqrt(3.7e6 / Math.max(ow * oh, 1)));
@@ -294,7 +294,7 @@ function resize() {
     canvas.width = ow;
     canvas.height = oh;
   }
-  // Szene: intern kleiner (Leistung), wird in post.js rekonstruiert
+  // Scene: smaller internally (performance), reconstructed in post.js
   const base = Math.min(Math.max(settings.renderScale, 0.25), 1.5);
   let w = window.innerWidth * devicePixelRatio * base;
   let h = window.innerHeight * devicePixelRatio * base;
@@ -306,7 +306,7 @@ function resize() {
   if (post) post.setSize(ow, oh, w, h);
 }
 
-// GPU-Zeit messen (wenn der Treiber es kann)
+// Measure GPU time (if the driver can)
 const timer = gl && gl.getExtension('EXT_disjoint_timer_query_webgl2');
 const queries = [];
 let gpuMs = 0, gpuSamples = 0, frames = 0, statT0 = performance.now(), lastAdapt = performance.now();
@@ -325,11 +325,11 @@ function pollQueries() {
   }
 }
 
-const noAdapt = params.get('adapt') === '0'; // fuer Tests/Screenshots: Aufloesung nicht regeln
+const noAdapt = params.get('adapt') === '0'; // for tests/screenshots: do not regulate resolution
 function adapt(now) {
   if (noAdapt || now - lastAdapt < 2500) return;
   if (settings.autoPerformance === false) {
-    // Automatik aus: feste Werte aus den Einstellungen
+    // Automatic off: fixed values from the settings
     if (dynScale !== 1 || fpsLimit !== 60) { dynScale = 1; fpsLimit = 60; resize(); }
   }
   const secs = (now - statT0) / 1000;
@@ -346,11 +346,11 @@ function adapt(now) {
   let next = dynScale;
   const auto = settings.autoPerformance !== false;
   if (!auto) {
-    if (timer && gpuSamples > 2) load = (gpuMs * Math.max(fps, 1)) / 1000;  // nur messen und anzeigen
+    if (timer && gpuSamples > 2) load = (gpuMs * Math.max(fps, 1)) / 1000;  // only measure and display
   } else if (timer && gpuSamples > 2) {
-    load = (gpuMs * Math.max(fps, 1)) / 1000;      // Anteil der GPU-Zeit
+    load = (gpuMs * Math.max(fps, 1)) / 1000;      // share of GPU time
     const ratio = budget / Math.max(load, 1e-4);
-    if (ratio < 0.85) {   // ueber Budget
+    if (ratio < 0.85) {   // over budget
       if (dynScale <= MIN_DYN + 1e-3) fpsLimit = Math.max(12, Math.round(Math.min(fpsLimit, target) * Math.max(0.7, ratio)));
       else next = dynScale * Math.max(0.7, Math.sqrt(ratio));
     } else if (ratio > 1.4) {
@@ -358,7 +358,7 @@ function adapt(now) {
       else next = dynScale * Math.min(1.12, Math.sqrt(ratio));
     }
   } else if (fps < Math.min(target, fpsLimit) * 0.75) {
-    // schafft die Bildrate nicht -> GPU am Anschlag
+    // cannot keep the frame rate -> GPU maxed out
     if (dynScale <= MIN_DYN + 1e-3) fpsLimit = Math.max(12, Math.round(Math.min(fpsLimit, target) * 0.8));
     else next = dynScale * 0.85;
   } else if (fps > target * 0.95) {
@@ -377,7 +377,7 @@ function adapt(now) {
 }
 window.addEventListener('resize', resize);
 
-// Weiche Uebergaenge fuer Wetter
+// Smooth transitions for weather
 const cur = { rain: 0, snow: 0, fog: 0.45, clouds: 0.35, hour: 12 };
 const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
 
@@ -392,7 +392,7 @@ function lerp(a, b, k) { return a + (b - a) * k; }
 const ambience = new Ambience();
 
 function applySettings(s) {
-  // neue Leistungsstufe / Akku-Wechsel: Regelung neu beginnen
+  // new power level / battery change: restart regulation
   if (['fps', 'renderScale', 'gpuBudget', 'quality', 'autoPerformance', 'scene'].some((k) => k in s && s[k] !== settings[k])) {
     dynScale = 1;
     fpsLimit = 60;
@@ -409,7 +409,7 @@ cur.hour = targetHour();
 
 function frame(now) {
   if (paused) {
-    // pausiert: nur selten aufwachen (Szenen fertig kompilieren, Status melden)
+    // paused: wake up only rarely (finish compiling scenes, report status)
     if (gl && !gl.isContextLost()) { pollJobs(); adapt(now); }
     last = now;
     setTimeout(() => requestAnimationFrame(frame), 500);
@@ -435,7 +435,7 @@ function frame(now) {
   cur.snow = lerp(cur.snow, w.snow, k);
   cur.fog = lerp(cur.fog, Math.min(1, settings.fog + w.fogAdd), k);
   cur.clouds = lerp(cur.clouds, Math.min(1, settings.clouds + w.cloudAdd), k);
-  // Uhrzeit weich nachfuehren (auch ueber Mitternacht)
+  // Follow the time smoothly (also across midnight)
   let dh = targetHour() - cur.hour;
   if (dh > 12) dh -= 24;
   if (dh < -12) dh += 24;
@@ -448,12 +448,12 @@ function frame(now) {
   ambience.setWeather(cur.rain, cur.hour);
 
   if (post && post.showingStill && !gl.isContextLost()) {
-    // Vorschaubild sichtbar: keine Szene rechnen, nur waehrend des Einbrennens ausgeben
+    // Preview image visible: do not render the scene, only output during burn-in
     if (post.inTransition()) post.presentOnly(now, settings.sharpen ?? 0.6);
     return;
   }
   if (!prog || !post || gl.isContextLost()) return;
-  if (buildMul(now) !== lastBuild) resize();   // Aufbau-Stufe weiter
+  if (buildMul(now) !== lastBuild) resize();   // build-up stage advances
   const [iw, ih] = post.inSize;
   const [jx, jy] = post.jitter();
   post.bindScene();
@@ -478,7 +478,7 @@ function frame(now) {
   if (q) { gl.endQuery(timer.TIME_ELAPSED_EXT); queries.push(q); }
   frames++;
 
-  // Anteil des neuen Bildes: klein = ruhig und scharf, groesser bei Bewegung / waehrend des Aufbaus
+  // Share of the new frame: small = calm and sharp, larger with motion / during build-up
   const mouseMove = Math.hypot(mouse.tx - mouse.x, mouse.ty - mouse.y);
   let alpha = 0.1;
   alpha = Math.max(alpha, Math.min(0.45, mouseMove * 3));
@@ -490,7 +490,7 @@ function frame(now) {
 
 if (gl) {
   applySettings({});
-  // Testmodus: Wetter sofort setzen statt einblenden
+  // Test mode: set weather immediately instead of fading in
   const w = WEATHER[settings.weather] || WEATHER.clear;
   Object.assign(cur, { rain: w.rain, snow: w.snow, fog: Math.min(1, settings.fog + w.fogAdd), clouds: Math.min(1, settings.clouds + w.cloudAdd) });
   requestAnimationFrame(frame);
@@ -501,15 +501,15 @@ if (api) {
   api.onCursor(({ x, y }) => { mouse.tx = x; mouse.ty = y; });
   let wasHidden = false;
   api.onPause((st) => {
-    // st = { paused, hidden } (alte Version: nur true/false)
+    // st = { paused, hidden } (old version: only true/false)
     const p = typeof st === 'object' ? !!st.paused : !!st;
     const hidden = typeof st === 'object' ? !!st.hidden : !!st;
     paused = p;
-    // Standbild: letztes Bild bleibt einfach stehen (es wird nichts mehr gezeichnet), Sound laeuft weiter.
-    // Ausgeblendet: Bild verstecken, Sound aus.
+    // Still image: the last frame simply stays (nothing is drawn any more), sound keeps playing.
+    // Hidden: hide the picture, sound off.
     canvas.style.visibility = hidden ? 'hidden' : 'visible';
     ambience.update({ ...settings, sound: settings.sound && !hidden });
-    if (!p && wasHidden && post) post.reset();            // nach dem Ausblenden nicht altes Bild nachziehen
+    if (!p && wasHidden && post) post.reset();            // after hiding do not drag the old image along
     wasHidden = hidden;
   });
   api.ready();
@@ -520,5 +520,5 @@ if (api) {
   });
 }
 
-// Fuer Screenshots/Tests
+// For screenshots/tests
 window.__lettoscape = { applySettings, get settings() { return settings; }, cur, currentId: () => currentId, cached: () => [...cache.keys()], frames: () => totalFrames, showingStill: () => !!(post && post.showingStill) };

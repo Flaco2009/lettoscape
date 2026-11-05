@@ -1,4 +1,4 @@
-// Szene "Verlassener Bahnhof": Gleise in den Wald, alter Bahnsteig, Haeuschen, Laternen.
+// Scene "Abandoned Station": tracks into the forest, old platform, little house, lanterns.
 import { build } from './common.js';
 
 export default build(`
@@ -10,7 +10,7 @@ export default build(`
 #define LEAVES 0.7
 #define WAVE_DIR vec2(0.0)
 
-const vec3 ST = vec3(5.2, 0.9, 20.0);  // Stationshaus (Boden = Bahnsteig)
+const vec3 ST = vec3(5.2, 0.9, 20.0);  // station house (ground = platform)
 const vec3 L1 = vec3(2.7, 3.15, 12.0);
 const vec3 L2 = vec3(2.7, 3.15, 30.0);
 
@@ -24,7 +24,7 @@ float groundH(vec2 p, int oct) {
 
 float forestMask(vec2 p, float g) {
   float m = p.x < 0.0 ? smoothstep(4.5, 8.0, -p.x) : smoothstep(9.0, 12.0, p.x);
-  // weiter hinten waechst der Wald naeher an die Gleise
+  // further back the forest grows closer to the tracks
   m = max(m, smoothstep(70.0, 110.0, p.y) * smoothstep(2.6, 4.0, abs(p.x)));
   m *= smoothstep(0.28, 0.45, fbm(p * 0.05 + 4.0, 3) + 0.25);
   return m * smoothstep(45.0, 28.0, g);
@@ -40,20 +40,20 @@ float sdLamp(vec3 p, vec3 L, out float glass) {
 float sdObj(vec3 p, out float m) {
   m = 0.0;
   float best = 1e9;
-  // Schienen
+  // Rails
   vec2 rq = vec2(abs(p.x) - 0.72, p.y - 0.22);
   vec2 rd2 = abs(rq) - vec2(0.035, 0.06);
   float rail = length(max(rd2, 0.0)) + min(max(rd2.x, rd2.y), 0.0);
   rail = max(rail, -10.0 - p.z);
   if (rail < best) { best = rail; m = 1.0; }
-  // Schwellen
+  // Sleepers
   vec3 sq = vec3(p.x, p.y - 0.1, mod(p.z, 0.75) - 0.375);
   float sleeper = max(sdBox(sq, vec3(1.25, 0.06, 0.11)), -10.0 - p.z);
   if (sleeper < best) { best = sleeper; m = 2.0; }
-  // Bahnsteig
+  // Platform
   float plat = sdBox(p - vec3(4.6, 0.45, 23.0), vec3(2.4, 0.45, 17.0));
   if (plat < best) { best = plat; m = 3.0; }
-  // Stationshaus
+  // Station house
   vec3 q = p - ST;
   if (length(q.xz) < 8.0 && q.y < 5.0) {
     float house = sdBox(q - vec3(0, 1.6, 0), vec3(1.4, 1.6, 4.0));
@@ -63,13 +63,13 @@ float sdObj(vec3 p, out float m) {
     float canopy = sdBox(q - vec3(-2.4, 2.75, 0), vec3(1.0, 0.05, 3.6));
     canopy = min(canopy, sdBox(vec3(q.x + 3.2, q.y - 1.35, abs(q.z) - 3.2), vec3(0.05, 1.4, 0.05)));
     if (canopy < best) { best = canopy; m = 1.0; }
-    // Schild
+    // Sign
     float sign = sdBox(q - vec3(-1.45, 2.35, 0), vec3(0.04, 0.25, 1.1));
     if (sign < best) { best = sign; m = 6.0; }
   } else {
     best = min(best, max(length(q.xz) - 7.5, q.y - 4.6));
   }
-  // Laternen
+  // Lanterns
   float g1, g2;
   float lamps = min(sdLamp(p, L1, g1), sdLamp(p, L2, g2));
   if (lamps < best) { best = lamps; m = 1.0; }
@@ -99,7 +99,7 @@ vec3 objAlbedo(float m, vec3 p, vec3 n) {
 
 vec3 objEmit(float m, vec3 p, vec3 n) {
   if (m > 6.5) {
-    // zweite Laterne flackert (kaputt)
+    // second lantern flickers (broken)
     float broken = p.z > 20.0 ? step(0.35, noise(vec2(uTime * 3.0, 4.0))) : 1.0;
     return windowGlow(1.0) * 1.8 * broken;
   }

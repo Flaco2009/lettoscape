@@ -1,83 +1,85 @@
 # 🔥 Lettoscape
 
-Cozy, immersive Live-Wallpaper für Windows (Linux folgt).
-Echte Tag/Nacht-Zeit, Wetter, Nebel, Sterne, Glühwürmchen, Ambient-Sound, alles im Panel einstellbar.
+Cozy, immersive live wallpaper for Windows (Linux to follow).
+Real day/night time, weather, fog, stars, fireflies, ambient sound – everything adjustable in the panel.
 
-<p><img src="docs/bergsee-tageszeiten.png" width="420" alt="Bergsee bei Tag, Abend und Nacht"> <img src="docs/panel.png" width="260" alt="Einstellungs-Panel"></p>
+<p><img src="docs/bergsee-tageszeiten.png" width="420" alt="Mountain lake by day, dusk and night"> <img src="docs/panel.png" width="260" alt="Settings panel"></p>
 
 ## Features
 
-- **Live-Wallpaper** hinter den Desktop-Icons (Windows 10/11, inkl. 24H2)
-- **Läuft wie eine normale App**: Icon in der Taskleiste, per Rechtsklick → *An Taskleiste anheften*
-- **☰-Ecke unten links**: beim Drüberfahren erscheinen drei Striche, Klick öffnet das Panel
-- **Pin-Knopf** im Panel: angepinnt bleibt es offen und im Vordergrund
-- **Tray-Icon** zusätzlich im Infobereich
-- **Autostart** mit Windows
-- **Tag/Nacht** nach echter Uhrzeit oder fest eingestellt
-- **Wetter**: Klar, Bewölkt, Regen, Schnee, Nebel (weiche Übergänge)
-- **Ambient-Sound**: Wind, Wasser, Regen, Grillen in der Nacht (prozedural, keine Dateien)
-- **Maus-Parallax**, mehrere Bildschirme
-- **Pausiert automatisch**, wenn ein Spiel/Video im Vollbild läuft
-- Leistung einstellbar: FPS, Auflösung, Qualität
+- **Live wallpaper** behind the desktop icons (Windows 10/11, incl. 24H2)
+- **Runs like a normal app**: taskbar icon, right-click → *Pin to taskbar*
+- **☰ corner at the bottom left**: three bars appear on hover, a click opens the panel
+- **Pin button** in the panel: pinned, it stays open and on top
+- **Tray icon** in the notification area as well
+- **Autostart** with Windows
+- **Day/night** by real time or fixed
+- **Weather**: clear, cloudy, rain, snow, fog (smooth transitions)
+- **Ambient sound**: wind, water, rain, crickets at night (procedural, no files)
+- **Mouse parallax**, multiple displays
+- **Pauses automatically** when an app covers the desktop or a game/video runs fullscreen
+- **Quick bar**: random scene, next scene, mute, pause; automatic scene switching on a timer
+- **Global shortcuts**: Ctrl+Alt+L panel, Ctrl+Alt+→ next scene, Ctrl+Alt+R random, Ctrl+Alt+M mute, Ctrl+Alt+P pause
+- Adjustable performance: quiet / balanced / beauty, plus FPS, resolution, quality
 
-## Szenen
+## Scenes
 
-| Szene | Status |
+| Scene | Status |
 |---|---|
-| Bergsee | ✅ |
-| Camping-Platz | ✅ (Rohversion) |
-| Feuerwachturm | ✅ (Rohversion) |
-| Verlassenes Schloss | ✅ (Rohversion) |
-| Waldlichtung | ✅ (Rohversion) |
-| Jägerhütte | ✅ (Rohversion) |
-| Alte Mühle am Bach | ✅ (Rohversion) |
-| Verlassener Bahnhof | ✅ (Rohversion) |
-| Waldrand-Kapelle | ✅ (Rohversion) |
-| Leuchtturm an der Küste | ✅ (Rohversion) |
+| Mountain Lake | ✅ |
+| Campsite | ✅ (rough) |
+| Fire Watchtower | ✅ (rough) |
+| Abandoned Castle | ✅ (rough) |
+| Forest Clearing | ✅ (rough) |
+| Hunter's Cabin | ✅ (rough) |
+| Old Mill by the Creek | ✅ (rough) |
+| Abandoned Station | ✅ (rough) |
+| Chapel at the Forest Edge | ✅ (rough) |
+| Lighthouse on the Coast | ✅ (rough) |
 
-## Starten (Entwicklung)
+## Run (development)
 
-Voraussetzung: [Node.js](https://nodejs.org) 20 oder neuer.
+Requires [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
 npm install
 npm start
 ```
 
-## Vorschaubilder
+## Preview images
 
-Nach Änderungen an einer Szene die Vorschaubilder neu erzeugen:
+After changing a scene, regenerate its preview images:
 
 ```bash
-npm run previews            # alle Szenen
-npm run previews -- camping # nur eine
+npm run previews            # all scenes
+npm run previews -- camping # one scene only
 ```
 
-## Installer bauen (Windows)
+## Build the installer (Windows)
 
 ```bash
 npm run dist:win
 ```
 
-Der Installer landet in `dist/`.
+The installer ends up in `dist/`.
 
-## Projektstruktur
+## Project structure
 
 ```
 src/
-  main/        Hauptprozess: Tray, Panel, Autostart, Desktop-Einbindung
-  wallpaper/   Renderer (WebGL2) + Szenen-Shader + Sound
-  panel/       Einstellungs-Panel
-  shared/      Standard-Einstellungen + Szenenliste
-assets/        Icons
+  main/        main process: tray, panel, autostart, desktop embedding
+  wallpaper/   renderer (WebGL2) + scene shaders + sound
+  panel/       settings panel
+  shared/      default settings + scene list
+assets/        icons
 ```
 
-## Neue Szene hinzufügen
+## Adding a new scene
 
-1. Shader in `src/wallpaper/scenes/<name>.js` anlegen (Vorlage: `camping.js`, nutzt `common.js`)
-2. In `src/wallpaper/scenes/index.js` eintragen
-3. In `src/shared/scenes.json` auf `"ready": true` setzen
+1. Create the shader in `src/wallpaper/scenes/<name>.js` (template: `camping.js`, uses `common.js`)
+2. Register it in `src/wallpaper/scenes/index.js`
+3. Set `"ready": true` in `src/shared/scenes.json`
 
-## Lizenz
+## License
 
 MIT

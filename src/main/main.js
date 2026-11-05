@@ -1,4 +1,4 @@
-// Lettoscape – Hauptprozess: Wallpaper-Fenster, Tray-Icon, Einstellungs-Panel, Autostart.
+// Lettoscape – main process: wallpaper windows, tray icon, settings panel, autostart.
 const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, powerMonitor, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -11,9 +11,9 @@ const isWin = process.platform === 'win32';
 const isLinux = process.platform === 'linux';
 const desktop = isWin ? require('./desktop-win') : null;
 
-if (isWin) app.setAppUserModelId('ch.flaco2009.lettoscape'); // noetig zum Anheften an die Taskleiste
+if (isWin) app.setAppUserModelId('ch.flaco2009.lettoscape'); // needed for pinning to the taskbar
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-// Grosser Shader-Cache auf der Festplatte: einmal uebersetzte Szenen laden nach einem Neustart sofort
+// Large shader cache on disk: scenes compiled once load instantly after a restart
 app.commandLine.appendSwitch('gpu-program-cache-size-kb', String(128 * 1024));
 app.commandLine.appendSwitch('gpu-disk-cache-size-kb', String(256 * 1024));
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -24,7 +24,7 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0);
 }
 
-// ---------- Einstellungen ----------
+// ---------- Settings ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS };
 
@@ -32,18 +32,18 @@ function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')); } catch { saved = {}; }
   settings = { ...DEFAULTS, ...saved, wallPaused: false };
-  // v2: alte Einstellungen waren viel zu hungrig fuer Laptops -> Leistung neu setzen
+  // v2: old settings were far too hungry for laptops -> reset performance
   if (!saved.settingsVersion || saved.settingsVersion < 2) {
     Object.assign(settings, POWER.balanced, { power: 'balanced', preload: false, settingsVersion: Math.max(2, settings.settingsVersion || 0) });
     saveSettings();
   }
-  // v3: neue Pause-Einstellung (nur auf dem Desktop animieren)
+  // v3: new pause setting (animate on the desktop only)
   if (settings.settingsVersion < 3) {
     settings.pauseMode = saved.pauseOnFullscreen === false ? 'never' : 'desktop';
     settings.settingsVersion = 3;
     saveSettings();
   }
-  // v4: Vorladen ist jetzt getaktet und sparsam -> wieder an
+  // v4: preloading is now paced and gentle -> on again
   if (settings.settingsVersion < 4) {
     settings.preload = true;
     settings.settingsVersion = 4;
@@ -51,7 +51,7 @@ function loadSettings() {
   }
 }
 
-// Leistungsstufen. gpuBudget = Anteil der GPU-Zeit, den das Wallpaper hoechstens nutzen soll.
+// Power levels. gpuBudget = share of GPU time the wallpaper may use at most.
 const POWER = {
   eco:      { fps: 20, renderScale: 0.45, quality: 'low' },
   balanced: { fps: 24, renderScale: 0.6,  quality: 'high' },
@@ -62,7 +62,7 @@ const BUDGET = { eco: 0.12, balanced: 0.25, beauty: 0.6, custom: 0.4 };
 let onBattery = false;
 function batteryMode() { return !!(onBattery && settings.batterySaver); }
 
-/** Einstellungen, wie sie das Wallpaper tatsaechlich nutzt (Akku-Modus beruecksichtigt). */
+/** Settings as the wallpaper actually uses them (battery mode applied). */
 function wallSettings() {
   const w = { ...settings, gpuBudget: BUDGET[settings.power] ?? 0.4, battery: batteryMode() };
   if (w.battery) {
@@ -92,7 +92,7 @@ function saveSettings() {
 
 // ---------- Autostart ----------
 function applyAutostart(on) {
-  if (!app.isPackaged) return; // im Dev-Modus nicht electron.exe registrieren
+  if (!app.isPackaged) return; // do not register electron.exe in dev mode
   if (isWin || process.platform === 'darwin') {
     app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] });
   } else if (isLinux) {
@@ -108,7 +108,7 @@ function applyAutostart(on) {
   }
 }
 
-// ---------- Wallpaper-Fenster ----------
+// ---------- Wallpaper windows ----------
 const wallpapers = new Map(); // displayId -> BrowserWindow
 
 function virtualOrigin() {
@@ -143,7 +143,7 @@ function createWallpaper(display) {
       const o = virtualOrigin();
       win.showInactive();
       const ok = desktop.attach(win, { x: phys.x - o.x, y: phys.y - o.y, width: phys.width, height: phys.height });
-      if (!ok) console.warn('Lettoscape: Desktop-Ebene nicht gefunden, Fenster bleibt normal.');
+      if (!ok) console.warn('Lettoscape: desktop layer not found, window stays normal.');
     } else {
       win.showInactive();
     }
@@ -166,10 +166,10 @@ function broadcast(channel, data) {
   if (panel && !panel.isDestroyed()) panel.webContents.send(channel, data);
 }
 
-// ---------- Taskleisten-Hintergrund ----------
-// Die Win11-Taskleiste ist halbtransparent und nimmt ihre Farbe vom echten System-Wallpaper,
-// nicht vom Wallpaper-Fenster. Deshalb wird regelmaessig ein Standbild der Szene als
-// System-Wallpaper gesetzt; das Original wird beim Beenden wiederhergestellt.
+// ---------- Taskbar background ----------
+// The Win11 taskbar is semi-transparent and takes its color from the real system wallpaper,
+// not from the wallpaper window. So a still image of the scene is set as the
+// system wallpaper regularly; the original is restored on quit.
 const origWallFile = () => path.join(app.getPath('userData'), 'original-wallpaper.txt');
 const snapFile = () => path.join(app.getPath('userData'), 'scene-snapshot.png');
 let snapTimer = null;
@@ -179,7 +179,7 @@ async function updateTaskbarSnapshot() {
   const w = wallpapers.get(screen.getPrimaryDisplay().id);
   if (!w || w.isDestroyed()) return;
   const pi = [...wallpapers.keys()].indexOf(screen.getPrimaryDisplay().id);
-  if (lastPause[pi] === 'hide') return; // gerade ausgeblendet -> spaeter
+  if (lastPause[pi] === 'hide') return; // currently hidden -> later
   try {
     const img = await w.webContents.capturePage();
     if (img.isEmpty()) return;
@@ -210,7 +210,7 @@ function startTaskbarSync() {
   snapTimer = setInterval(updateTaskbarSnapshot, 5 * 60 * 1000);
 }
 
-// ---------- Maus-Parallax + Vollbild-Pause ----------
+// ---------- Mouse parallax + fullscreen pause ----------
 let cursorTimer = null, pauseTimer = null, paused = false, lastCursor = null;
 
 function startLoops() {
@@ -218,7 +218,7 @@ function startLoops() {
   cursorTimer = setInterval(() => {
     if (!settings.parallax || paused) return;
     const p = screen.getCursorScreenPoint();
-    if (lastCursor && lastCursor.x === p.x && lastCursor.y === p.y) return; // Maus steht still
+    if (lastCursor && lastCursor.x === p.x && lastCursor.y === p.y) return; // mouse is still
     lastCursor = p;
     for (const [id, w] of wallpapers) {
       const d = screen.getAllDisplays().find((x) => x.id === id);
@@ -233,17 +233,17 @@ function startLoops() {
   pauseTimer = setInterval(updatePause, 500);
 }
 
-// Pausieren, wenn man das Wallpaper nicht sieht:
-//  - Bildschirm gesperrt / Standby / laengere Abwesenheit
-//  - Fenster maximiert oder im Vollbild (pro Bildschirm)
+// Pause when the wallpaper is not visible:
+//  - screen locked / standby / long absence
+//  - window maximized or fullscreen (per display)
 let locked = false;
 let lastPause = [];
 let pauseReason = '';
-// Zustand pro Bildschirm:
-//   'run'    – animiert
-//   'freeze' – Standbild: letztes Bild bleibt stehen, es wird nichts mehr gerechnet
-//              (eine App ist im Vordergrund, der Desktop ist aber noch teilweise zu sehen)
-//   'hide'   – gar nicht sichtbar (verdeckt, gesperrt, abwesend)
+// State per display:
+//   'run'    – animated
+//   'freeze' – still image: the last frame stays, nothing is rendered
+//              (an app is in the foreground, but the desktop is still partly visible)
+//   'hide'   – not visible at all (covered, locked, away)
 let tick = 0;
 let lastCovered = [];
 function updatePause() {
@@ -255,10 +255,10 @@ function updatePause() {
   else if (settings.wallPaused) { state = state.map(() => 'freeze'); reason = 'manuell'; }
   else if (powerMonitor.getSystemIdleTime() > 15 * 60) { state = state.map(() => 'hide'); reason = 'abwesend'; }
   else if (isWin && mode !== 'never') {
-    // App im Vordergrund? (sehr billige Abfrage, jede halbe Sekunde)
+    // App in the foreground? (very cheap query, every half second)
     let onDesktop = true;
     try { onDesktop = desktop.desktopActive(process.pid); } catch { onDesktop = true; }
-    // Verdeckte Bildschirme (Fensterliste durchgehen, etwas teurer -> seltener)
+    // Covered displays (walks the window list, a bit pricier -> less often)
     if (tick % 3 === 0 || lastCovered.length !== displays.length) {
       try { lastCovered = desktop.coveredDisplays(displays.map((d) => screen.dipToScreenRect(null, d.workArea))); }
       catch { lastCovered = displays.map(() => false); }
@@ -281,7 +281,7 @@ function updatePause() {
   lastPause = state;
   paused = state.length > 0 && state.every((x) => x !== 'run');
   pauseReason = reason;
-  // Menue-Ecke nur bei echtem Vollbild/gesperrt ausblenden
+  // Hide the menu corner only for real fullscreen/locked
   if (corner && !corner.isDestroyed() && (changed || tick % 3 === 0)) {
     const hide = locked || (isWin && mode !== 'never' && (() => {
       try { return desktop.isForegroundFullscreen(displays.map((d) => screen.dipToScreenRect(null, d.bounds))); } catch { return false; }
@@ -293,9 +293,9 @@ function updatePause() {
 }
 
 // ---------- Panel ----------
-// Das Panel ist ein normales App-Fenster: es erscheint in der Taskleiste und kann dort
-// angeheftet werden. "Schliessen" minimiert es nur (oder versteckt es, wenn die
-// Taskleisten-Anzeige aus ist). Mit dem Pin bleibt es offen und immer im Vordergrund.
+// The panel is a normal app window: it shows up in the taskbar and can be pinned there.
+// "Close" only minimizes it (or hides it when the taskbar entry is off).
+// With the pin it stays open and always on top.
 let panel = null;
 let panelPlaced = false;
 let lastAutoClose = 0;
@@ -350,7 +350,7 @@ function placePanel(side) {
 function showPanel(anchor) {
   if (!panel || panel.isDestroyed()) return createPanel(true, anchor);
   const wasOpen = panel.isVisible() && !panel.isMinimized();
-  // Angepinnt und offen: Position behalten (man kann es frei verschieben)
+  // Pinned and open: keep position (it can be moved freely)
   if (!wasOpen && (anchor || !panelPlaced || !settings.panelPinned)) placePanel(anchor || 'right');
   if (panel.isMinimized()) panel.restore();
   panel.show();
@@ -366,13 +366,13 @@ function closePanel() {
 function togglePanel(anchor) {
   if (!panel || panel.isDestroyed()) return createPanel(true, anchor);
   const open = panel.isVisible() && !panel.isMinimized();
-  // Klick auf Tray/Ecke schliesst das Panel per Blur schon - nicht gleich wieder oeffnen
+  // Clicking tray/corner already closes the panel via blur - do not reopen it right away
   if (!open && Date.now() - lastAutoClose < 300) return;
   if (open) closePanel();
   else showPanel(anchor);
 }
 
-// ---------- Menue-Ecke unten links (drei Striche beim Drueberfahren) ----------
+// ---------- Menu corner bottom left (three bars on hover) ----------
 let corner = null;
 
 function createCorner() {
@@ -414,24 +414,24 @@ function iconPath() {
 function refreshTray() {
   if (!tray) return;
   const menu = Menu.buildFromTemplate([
-    { label: 'Einstellungen öffnen', click: () => showPanel() },
+    { label: 'Open settings', click: () => showPanel() },
     { type: 'separator' },
-    { label: 'Zufällige Szene', click: () => switchScene('random') },
-    { label: 'Nächste Szene', click: () => switchScene('next') },
-    { label: 'Stumm', type: 'checkbox', checked: !settings.sound, click: () => updateSettings({ sound: !settings.sound }) },
-    { label: 'Wallpaper pausieren', type: 'checkbox', checked: !!settings.wallPaused, click: () => updateSettings({ wallPaused: !settings.wallPaused }) },
+    { label: 'Random scene', click: () => switchScene('random') },
+    { label: 'Next scene', click: () => switchScene('next') },
+    { label: 'Mute', type: 'checkbox', checked: !settings.sound, click: () => updateSettings({ sound: !settings.sound }) },
+    { label: 'Pause wallpaper', type: 'checkbox', checked: !!settings.wallPaused, click: () => updateSettings({ wallPaused: !settings.wallPaused }) },
     { type: 'separator' },
     ...SCENES.filter((s) => s.ready).map((s) => ({
       label: s.name, type: 'radio', checked: settings.scene === s.id,
       click: () => updateSettings({ scene: s.id }),
     })),
     { type: 'separator' },
-    { label: 'Beenden', click: () => app.quit() },
+    { label: 'Quit', click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
 }
 
-// ---------- Szenenwechsel, Zeitschaltuhr, Tastenkuerzel ----------
+// ---------- Scene switching, timer, keyboard shortcuts ----------
 function switchScene(how) {
   const ids = SCENES.filter((s) => s.ready).map((s) => s.id);
   const i = ids.indexOf(settings.scene);
@@ -458,7 +458,7 @@ function registerHotkeys() {
     'CommandOrControl+Alt+M': () => updateSettings({ sound: !settings.sound }),
     'CommandOrControl+Alt+P': () => updateSettings({ wallPaused: !settings.wallPaused }),
   };
-  for (const [k, fn] of Object.entries(keys)) { try { globalShortcut.register(k, fn); } catch { /* Kuerzel belegt */ } }
+  for (const [k, fn] of Object.entries(keys)) { try { globalShortcut.register(k, fn); } catch { /* shortcut already taken */ } }
 }
 
 function createTray() {
@@ -469,7 +469,7 @@ function createTray() {
   tray.on('click', () => togglePanel());
 }
 
-// ---------- Einstellungen aendern ----------
+// ---------- Changing settings ----------
 function updateSettings(patch) {
   const before = settings;
   settings = { ...settings, ...patch };
@@ -495,21 +495,21 @@ function updateSettings(patch) {
   return settings;
 }
 
-// Ladezustand der Szenen (vom Wallpaper gemeldet), fuers Panel
+// Load state of the scenes (reported by the wallpaper), for the panel
 const sceneStatus = {};
 ipcMain.on('scene-status', (_e, st) => {
   if (!st || !st.id) return;
-  // mehrere Bildschirme: "bereit" gewinnt gegen "laedt"
+  // multiple displays: "ready" beats "loading"
   const prev = sceneStatus[st.id];
   if (st.state === 'loading' && prev && prev.state === 'ready') return;
   sceneStatus[st.id] = st;
   if (panel && !panel.isDestroyed()) panel.webContents.send('scene-status', st);
-  if (st.state === 'error') console.warn(`Szene ${st.id}: ${st.error}`);
+  if (st.state === 'error') console.warn(`Scene ${st.id}: ${st.error}`);
 });
 
 ipcMain.handle('get-settings', () => ({ settings, scenes: SCENES, version: app.getVersion(), platform: process.platform, sceneStatus, power: powerInfo() }));
 
-// Live-Werte vom Wallpaper (FPS, Aufloesung, GPU-Last) fuers Panel
+// Live values from the wallpaper (FPS, resolution, GPU load) for the panel
 ipcMain.on('render-stats', (_e, st) => {
   if (panel && !panel.isDestroyed() && panel.isVisible()) panel.webContents.send('render-stats', st);
 });
@@ -538,9 +538,9 @@ app.whenReady().then(() => {
   screen.on('display-removed', rebuildWallpapers);
   screen.on('display-metrics-changed', rebuildWallpapers);
   for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, createCorner);
-  // Nach Standby/Explorer-Neustart neu einhaengen
+  // Re-attach after standby/Explorer restart
   powerMonitor.on('resume', () => { locked = false; setTimeout(rebuildWallpapers, 2000); });
-  // Akku: automatisch sparen
+  // Battery: save power automatically
   try { onBattery = powerMonitor.isOnBatteryPower(); } catch { onBattery = false; }
   powerMonitor.on('on-battery', () => { onBattery = true; sendSettings(); sendPower(); });
   powerMonitor.on('on-ac', () => { onBattery = false; sendSettings(); sendPower(); });
@@ -549,8 +549,8 @@ app.whenReady().then(() => {
   powerMonitor.on('suspend', () => { locked = true; updatePause(); });
   sendSettings();
 
-  // Beim normalen Start (z.B. Klick auf das angeheftete Icon) Panel zeigen,
-  // beim Autostart nur still in die Taskleiste legen.
+  // On a normal start (e.g. click on the pinned icon) show the panel,
+  // on autostart just put it quietly into the taskbar.
   const hidden = process.argv.includes('--hidden');
   createPanel(!hidden);
 });

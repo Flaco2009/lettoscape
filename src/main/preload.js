@@ -1,4 +1,4 @@
-// Sichere Bruecke zwischen Hauptprozess und Fenstern (Wallpaper + Panel).
+// Secure bridge between main process and windows (wallpaper + panel).
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('lettoscape', {
@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('lettoscape', {
   onRenderStats: (cb) => ipcRenderer.on('render-stats', (_e, st) => cb(st)),
   onPower: (cb) => ipcRenderer.on('power', (_e, p) => cb(p)),
   onSceneStatus: (cb) => ipcRenderer.on('scene-status', (_e, st) => cb(st)),
-  // beide
+  // both
   onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s)),
   // Panel
   getSettings: () => ipcRenderer.invoke('get-settings'),
