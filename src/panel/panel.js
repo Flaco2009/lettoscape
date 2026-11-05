@@ -40,8 +40,36 @@
     sceneBox.appendChild(b);
   }
 
+  // ---- Tabs ----
+  let tab = 'scene';
+  try { tab = localStorage.getItem('tab') || 'scene'; } catch {}
+  function showTab(n) {
+    tab = n;
+    try { localStorage.setItem('tab', n); } catch {}
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === n));
+    document.querySelectorAll('section[data-tab]').forEach((el) => { el.hidden = el.dataset.tab !== n; });
+    document.querySelector('main').scrollTop = 0;
+  }
+  document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+  // ---- Schnellleiste ----
+  const ids = scenes.filter((x) => x.ready).map((x) => x.id);
+  const pickScene = (rand) => {
+    const rest = ids.filter((x) => x !== s.scene);
+    return rand ? rest[Math.floor(Math.random() * rest.length)] : ids[(ids.indexOf(s.scene) + 1) % ids.length];
+  };
+  document.getElementById('qRandom').addEventListener('click', () => set({ scene: pickScene(true) }));
+  document.getElementById('qNext').addEventListener('click', () => set({ scene: pickScene(false) }));
+  document.getElementById('qMute').addEventListener('click', () => set({ sound: !s.sound }));
+  document.getElementById('qPause').addEventListener('click', () => set({ wallPaused: !s.wallPaused }));
+  document.querySelectorAll('#timeChips button').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.t === 'real') set({ timeMode: 'real' });
+    else set({ timeMode: 'fixed', hour: Number(b.dataset.t) });
+  }));
+
   // ---- Segmente / Chips ----
   document.querySelectorAll('.seg, .chips').forEach((group) => {
+    if (!group.dataset.key) return;
     const key = group.dataset.key;
     const num = group.hasAttribute('data-num');
     group.querySelectorAll('button').forEach((btn) => {
@@ -96,8 +124,8 @@
     box.classList.remove('warm', 'hot', 'idle');
     if (power.pausedAll || (stats && stats.paused)) {
       box.classList.add('idle');
-      const why = { gesperrt: 'Bildschirm gesperrt', abwesend: 'du bist weg', verdeckt: 'Desktop verdeckt', vollbild: 'Vollbild-App', app: 'App im Vordergrund' }[power.reason] || 'verdeckt';
-      t.textContent = (power.reason === 'app' ? 'Standbild' : 'Pausiert') + ' (' + why + ') · 0 % GPU';
+      const why = { manuell: 'von dir angehalten', gesperrt: 'Bildschirm gesperrt', abwesend: 'du bist weg', verdeckt: 'Desktop verdeckt', vollbild: 'Vollbild-App', app: 'App im Vordergrund' }[power.reason] || 'verdeckt';
+      t.textContent = (power.reason === 'app' || power.reason === 'manuell' ? 'Standbild' : 'Pausiert') + ' (' + why + ') · 0 % GPU';
       return;
     }
     if (!stats) { t.textContent = 'Messe …'; return; }
@@ -125,7 +153,7 @@
 
   function render() {
     document.querySelectorAll('.scene').forEach((el) => el.classList.toggle('active', el.dataset.id === s.scene));
-    document.querySelectorAll('.seg, .chips').forEach((group) => {
+    document.querySelectorAll('.seg[data-key], .chips[data-key]').forEach((group) => {
       const v = String(s[group.dataset.key]);
       group.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.val === v));
     });
@@ -136,6 +164,13 @@
       if (out) out.textContent = fmt[out.dataset.fmt](Number(inp.value));
     });
     document.querySelectorAll('.toggle input').forEach((inp) => { inp.checked = !!s[inp.dataset.key]; });
+    const q = (id, on, txt) => { const b = document.getElementById(id); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); if (txt) b.textContent = txt; };
+    q('qMute', !s.sound, s.sound ? '🔊 Ton an' : '🔇 Stumm');
+    q('qPause', !!s.wallPaused, s.wallPaused ? '▶ Weiter' : '⏸ Pause');
+    document.getElementById('switchOpts').classList.toggle('disabled', !s.autoSwitch);
+    document.querySelectorAll('#timeChips button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.t === 'real' ? s.timeMode === 'real' : s.timeMode === 'fixed' && Math.abs(s.hour - Number(b.dataset.t)) < 0.01);
+    });
     document.getElementById('hourRow').classList.toggle('disabled', s.timeMode !== 'fixed');
     document.querySelectorAll('#power button').forEach((b) => b.classList.toggle('on', b.dataset.power === s.power));
     document.getElementById('powerHint').textContent = (POWER_HINT[s.power] || '') + (power && power.battery ? ' Gerade im Akku-Modus.' : '');
@@ -185,19 +220,20 @@
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') api.hidePanel(); });
 
+  showTab(tab);
   render();
 
   function mockApi() {
     const defaults = {
       scene: 'bergsee', timeMode: 'real', hour: 20, weather: 'clear', fog: 0.45, clouds: 0.35, brightness: 1,
       speed: 1, fps: 30, renderScale: 0.75, quality: 'high', parallax: true, sound: false, volume: 0.5,
-      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: true, power: 'balanced', batterySaver: true, autoPerformance: true, pauseMode: 'desktop', taskbarSync: true,
+      autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: true, power: 'balanced', batterySaver: true, autoPerformance: true, pauseMode: 'desktop', taskbarSync: true, autoSwitch: false, switchMinutes: 15, switchRandom: true, hotkeys: true, wallPaused: false,
     };
     let st = { ...defaults };
     const names = ['Bergsee', 'Camping-Platz', 'Feuerwachturm', 'Verlassenes Schloss', 'Waldlichtung', 'Jägerhütte', 'Alte Mühle am Bach', 'Verlassener Bahnhof', 'Waldrand-Kapelle', 'Leuchtturm an der Küste'];
     const ids = ['bergsee', 'camping', 'firewatch', 'schloss', 'lichtung', 'jaegerhuette', 'muehle', 'bahnhof', 'kapelle', 'leuchtturm'];
     return {
-      getSettings: async () => ({ settings: st, scenes: ids.map((id, i) => ({ id, name: names[i], ready: i === 0 })), version: '0.1.0', platform: 'win32' }),
+      getSettings: async () => ({ settings: st, scenes: ids.map((id, i) => ({ id, name: names[i], ready: true })), version: '0.1.0', platform: 'win32' }),
       setSettings: async (p) => (st = { ...st, ...p }),
       resetSettings: async () => (st = { ...defaults }),
       onSettings: () => {},

@@ -25,5 +25,10 @@
   "power": "balanced",
   "batterySaver": true,
   "settingsVersion": 4,
-  "pauseMode": "desktop"
+  "pauseMode": "desktop",
+  "autoSwitch": false,
+  "switchMinutes": 15,
+  "switchRandom": true,
+  "hotkeys": true,
+  "wallPaused": false
 }

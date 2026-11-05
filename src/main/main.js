@@ -1,5 +1,5 @@
 // Lettoscape – Hauptprozess: Wallpaper-Fenster, Tray-Icon, Einstellungs-Panel, Autostart.
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, powerMonitor, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -31,7 +31,7 @@ let settings = { ...DEFAULTS };
 function loadSettings() {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')); } catch { saved = {}; }
-  settings = { ...DEFAULTS, ...saved };
+  settings = { ...DEFAULTS, ...saved, wallPaused: false };
   // v2: alte Einstellungen waren viel zu hungrig fuer Laptops -> Leistung neu setzen
   if (!saved.settingsVersion || saved.settingsVersion < 2) {
     Object.assign(settings, POWER.balanced, { power: 'balanced', preload: false, settingsVersion: Math.max(2, settings.settingsVersion || 0) });
@@ -252,6 +252,7 @@ function updatePause() {
   let state = displays.map(() => 'run');
   let reason = '';
   if (locked) { state = state.map(() => 'hide'); reason = 'gesperrt'; }
+  else if (settings.wallPaused) { state = state.map(() => 'freeze'); reason = 'manuell'; }
   else if (powerMonitor.getSystemIdleTime() > 15 * 60) { state = state.map(() => 'hide'); reason = 'abwesend'; }
   else if (isWin && mode !== 'never') {
     // App im Vordergrund? (sehr billige Abfrage, jede halbe Sekunde)
@@ -410,12 +411,15 @@ function iconPath() {
   return path.join(__dirname, '..', '..', 'assets', isWin ? 'icon.ico' : 'icon.png');
 }
 
-function createTray() {
-  const img = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'assets', 'tray.png'));
-  tray = new Tray(img.isEmpty() ? nativeImage.createFromPath(iconPath()) : img);
-  tray.setToolTip('Lettoscape');
+function refreshTray() {
+  if (!tray) return;
   const menu = Menu.buildFromTemplate([
     { label: 'Einstellungen öffnen', click: () => showPanel() },
+    { type: 'separator' },
+    { label: 'Zufällige Szene', click: () => switchScene('random') },
+    { label: 'Nächste Szene', click: () => switchScene('next') },
+    { label: 'Stumm', type: 'checkbox', checked: !settings.sound, click: () => updateSettings({ sound: !settings.sound }) },
+    { label: 'Wallpaper pausieren', type: 'checkbox', checked: !!settings.wallPaused, click: () => updateSettings({ wallPaused: !settings.wallPaused }) },
     { type: 'separator' },
     ...SCENES.filter((s) => s.ready).map((s) => ({
       label: s.name, type: 'radio', checked: settings.scene === s.id,
@@ -425,6 +429,43 @@ function createTray() {
     { label: 'Beenden', click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
+}
+
+// ---------- Szenenwechsel, Zeitschaltuhr, Tastenkuerzel ----------
+function switchScene(how) {
+  const ids = SCENES.filter((s) => s.ready).map((s) => s.id);
+  const i = ids.indexOf(settings.scene);
+  let next;
+  if (how === 'random') { const rest = ids.filter((x) => x !== settings.scene); next = rest[Math.floor(Math.random() * rest.length)]; }
+  else next = ids[(i + 1 + ids.length) % ids.length];
+  if (next) updateSettings({ scene: next });
+}
+let switchTimer = null;
+function startSwitchTimer() {
+  clearInterval(switchTimer);
+  switchTimer = null;
+  if (!settings.autoSwitch) return;
+  const ms = Math.max(1, settings.switchMinutes || 15) * 60000;
+  switchTimer = setInterval(() => { if (!paused && !settings.wallPaused) switchScene(settings.switchRandom ? 'random' : 'next'); }, ms);
+}
+function registerHotkeys() {
+  globalShortcut.unregisterAll();
+  if (!settings.hotkeys) return;
+  const keys = {
+    'CommandOrControl+Alt+L': () => togglePanel(),
+    'CommandOrControl+Alt+Right': () => switchScene('next'),
+    'CommandOrControl+Alt+R': () => switchScene('random'),
+    'CommandOrControl+Alt+M': () => updateSettings({ sound: !settings.sound }),
+    'CommandOrControl+Alt+P': () => updateSettings({ wallPaused: !settings.wallPaused }),
+  };
+  for (const [k, fn] of Object.entries(keys)) { try { globalShortcut.register(k, fn); } catch { /* Kuerzel belegt */ } }
+}
+
+function createTray() {
+  const img = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'assets', 'tray.png'));
+  tray = new Tray(img.isEmpty() ? nativeImage.createFromPath(iconPath()) : img);
+  tray.setToolTip('Lettoscape');
+  refreshTray();
   tray.on('click', () => togglePanel());
 }
 
@@ -446,6 +487,10 @@ function updateSettings(patch) {
     }
   }
   if ('taskbarSync' in patch && patch.taskbarSync !== before.taskbarSync) startTaskbarSync();
+  if ('wallPaused' in patch) { lastPause = []; updatePause(); }
+  if ('autoSwitch' in patch || 'switchMinutes' in patch) startSwitchTimer();
+  if ('hotkeys' in patch && patch.hotkeys !== before.hotkeys) registerHotkeys();
+  if ('scene' in patch || 'sound' in patch || 'wallPaused' in patch) refreshTray();
   sendSettings();
   return settings;
 }
@@ -485,6 +530,8 @@ app.whenReady().then(() => {
   createTray();
   createCorner();
   startLoops();
+  startSwitchTimer();
+  registerHotkeys();
   startTaskbarSync();
 
   screen.on('display-added', rebuildWallpapers);
@@ -512,6 +559,7 @@ app.on('second-instance', () => showPanel());
 app.on('window-all-closed', (e) => e.preventDefault());
 app.on('before-quit', () => {
   quitting = true;
+  globalShortcut.unregisterAll();
   clearInterval(cursorTimer);
   clearInterval(pauseTimer);
   for (const w of wallpapers.values()) w.destroy();

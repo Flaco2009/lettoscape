@@ -211,3 +211,22 @@ details.adv[open] summary::before { content: "▾ "; }
 
 p.label { margin: 8px 0 6px; color: var(--text); }
 .seg[data-key="pauseMode"] button { font-size: 12px; padding: 7px 4px; }
+
+/* Schnellleiste + Tabs */
+.quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px 16px 0; }
+.quick button {
+  border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 8px 4px;
+  border-radius: 10px; cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap;
+}
+.quick button:hover { border-color: #5a4a3d; }
+.quick button.on { border-color: var(--ember); background: rgba(240,160,75,0.12); color: #ffdcb0; }
+.tabs { display: flex; gap: 2px; padding: 10px 16px 0; border-bottom: 1px solid var(--line); }
+.tabs button {
+  flex: 1; border: 0; background: transparent; color: var(--muted); padding: 8px 4px 9px; cursor: pointer;
+  font: inherit; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tabs button:hover { color: var(--text); }
+.tabs button.on { color: var(--text); border-bottom-color: var(--ember); }
+section[hidden], .seg[hidden] { display: none; }
+.sub-opts { margin: 2px 0 6px; padding-left: 10px; border-left: 2px solid var(--line); }
+.sub-opts.disabled { opacity: 0.4; pointer-events: none; }

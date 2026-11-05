@@ -42,3 +42,8 @@ Cozy Live-Wallpaper (Electron, Windows zuerst, Linux später). Sprache im UI und
 - Lichter: warm (`windowGlow`, `fireFlicker`), nachts stärker. Alles soll cozy wirken, nie gruselig.
 - **Windows-Kompilierzeit:** Unter Windows übersetzt Direct3D (fxc) die Shader, rollt Schleifen mit fester Grenze aus und kopiert Funktionen an jede Aufrufstelle. Deshalb: Schleifen immer `for (int i = ZERO; ...)` statt `= 0`, teure Funktionen (march, shade, sceneH, sdObj) nur an EINER Stelle aufrufen (Normalen per Schleife, Wasser-Spiegelung als zweiter Durchgang derselben Schleife in `main`).
 - Performance: Ziel 30 FPS bei 75 % Auflösung auf Mittelklasse-GPU. Teure Schleifen in `sceneVolume` sparsam.
+
+## Komfort (v0.9)
+- Panel hat Tabs (Szene / Look / Leistung / System) + Schnellleiste (Zufall, Weiter, Ton, Pause) und Tageszeit-Chips.
+- Einstellungen: `autoSwitch`/`switchMinutes`/`switchRandom` (Szenen-Wechsler in `main.js`), `wallPaused` (manuell anhalten, nicht gespeichert), `hotkeys`.
+- Globale Kürzel: Strg+Alt+L Panel, →/R nächste/zufällige Szene, M Ton, P Pause. Tray-Menü spiegelt das.

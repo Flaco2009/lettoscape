@@ -23,26 +23,51 @@
     </div>
   </header>
 
+  <div class="quick">
+    <button id="qRandom" title="Zufällige Szene (Strg+Alt+R)">🎲 Zufall</button>
+    <button id="qNext" title="Nächste Szene (Strg+Alt+→)">⏭ Weiter</button>
+    <button id="qMute" aria-pressed="false" title="Ton an/aus (Strg+Alt+M)">🔊 Ton</button>
+    <button id="qPause" aria-pressed="false" title="Wallpaper anhalten (Strg+Alt+P)">⏸ Pause</button>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="scene" class="on">Szene</button>
+    <button data-tab="look">Look</button>
+    <button data-tab="perf">Leistung</button>
+    <button data-tab="sys">System</button>
+  </nav>
+
   <main>
-    <section>
-      <h2>Szene</h2>
+    <section data-tab="scene">
       <div class="scenes" id="scenes"></div>
+      <label class="toggle"><span>Szenen automatisch wechseln</span><input type="checkbox" data-key="autoSwitch"><i></i></label>
+      <div class="sub-opts" id="switchOpts">
+        <div class="seg" data-key="switchMinutes" data-num>
+          <button data-val="5">5 Min</button><button data-val="15">15</button><button data-val="30">30</button><button data-val="60">60</button>
+        </div>
+        <label class="toggle"><span>In zufälliger Reihenfolge</span><input type="checkbox" data-key="switchRandom"><i></i></label>
+      </div>
     </section>
 
-    <section>
+    <section data-tab="scene">
       <h2>Tageszeit</h2>
-      <div class="seg" data-key="timeMode">
-        <button data-val="real">Echte Uhrzeit</button>
-        <button data-val="fixed">Fest</button>
+      <div class="chips" id="timeChips">
+        <button data-t="real">🕒 Jetzt</button>
+        <button data-t="7">🌅 Morgen</button>
+        <button data-t="13">☀ Mittag</button>
+        <button data-t="18.5">🌇 Abend</button>
+        <button data-t="23">🌙 Nacht</button>
+      </div>
+      <div class="seg" data-key="timeMode" hidden>
+        <button data-val="real"></button><button data-val="fixed"></button>
       </div>
       <label class="row" id="hourRow">
-        <span>Uhrzeit</span>
+        <span>Feinwahl</span>
         <input type="range" min="0" max="23.75" step="0.25" data-key="hour">
         <output data-for="hour" data-fmt="clock"></output>
       </label>
     </section>
 
-    <section>
+    <section data-tab="scene">
       <h2>Wetter</h2>
       <div class="chips" data-key="weather">
         <button data-val="clear">☀ Klar</button>
@@ -55,20 +80,20 @@
       <label class="row"><span>Wolken</span><input type="range" min="0" max="1" step="0.01" data-key="clouds"><output data-for="clouds" data-fmt="pct"></output></label>
     </section>
 
-    <section>
+    <section data-tab="look">
       <h2>Bild</h2>
       <label class="row"><span>Helligkeit</span><input type="range" min="0.5" max="1.5" step="0.01" data-key="brightness"><output data-for="brightness" data-fmt="pct"></output></label>
       <label class="row"><span>Tempo</span><input type="range" min="0" max="3" step="0.05" data-key="speed"><output data-for="speed" data-fmt="x"></output></label>
       <label class="toggle"><span>Maus-Parallax</span><input type="checkbox" data-key="parallax"><i></i></label>
     </section>
 
-    <section>
+    <section data-tab="look">
       <h2>Sound</h2>
       <label class="toggle"><span>Ambient-Sound</span><input type="checkbox" data-key="sound"><i></i></label>
       <label class="row"><span>Lautstärke</span><input type="range" min="0" max="1" step="0.01" data-key="volume"><output data-for="volume" data-fmt="pct"></output></label>
     </section>
 
-    <section>
+    <section data-tab="perf">
       <h2>Leistung</h2>
       <div class="seg power" id="power">
         <button data-power="eco">🍃 Leise</button>
@@ -105,11 +130,12 @@
       <label class="toggle"><span>Taskleiste an Szene anpassen</span><input type="checkbox" data-key="taskbarSync"><i></i></label>
     </section>
 
-    <section>
+    <section data-tab="sys">
       <h2>System</h2>
       <label class="toggle"><span>Mit Windows starten</span><input type="checkbox" data-key="autostart"><i></i></label>
       <label class="toggle"><span>Alle Bildschirme</span><input type="checkbox" data-key="allDisplays"><i></i></label>
       <label class="toggle"><span>In Taskleiste anzeigen</span><input type="checkbox" data-key="showInTaskbar"><i></i></label>
+      <label class="toggle"><span>Tastenkürzel (Strg+Alt+L Panel, →, R, M, P)</span><input type="checkbox" data-key="hotkeys"><i></i></label>
       <label class="toggle"><span>Menü-Ecke unten links (☰)</span><input type="checkbox" data-key="cornerMenu"><i></i></label>
       <p class="hint">Tipp: Rechtsklick auf das Taskleisten-Icon → „An Taskleiste anheften“.</p>
     </section>
