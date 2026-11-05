@@ -440,11 +440,18 @@ if (gl) {
 if (api) {
   api.onSettings((s) => applySettings(s));
   api.onCursor(({ x, y }) => { mouse.tx = x; mouse.ty = y; });
-  api.onPause((p) => {
+  let wasHidden = false;
+  api.onPause((st) => {
+    // st = { paused, hidden } (alte Version: nur true/false)
+    const p = typeof st === 'object' ? !!st.paused : !!st;
+    const hidden = typeof st === 'object' ? !!st.hidden : !!st;
     paused = p;
-    ambience.update({ ...settings, sound: settings.sound && !p });
-    canvas.style.visibility = p ? 'hidden' : 'visible';  // Compositor muss nichts mehr zeichnen
-    if (!p && post) post.reset();                         // altes Bild nicht nachziehen
+    // Standbild: letztes Bild bleibt einfach stehen (es wird nichts mehr gezeichnet), Sound laeuft weiter.
+    // Ausgeblendet: Bild verstecken, Sound aus.
+    canvas.style.visibility = hidden ? 'hidden' : 'visible';
+    ambience.update({ ...settings, sound: settings.sound && !hidden });
+    if (!p && wasHidden && post) post.reset();            // nach dem Ausblenden nicht altes Bild nachziehen
+    wasHidden = hidden;
   });
   api.ready();
 } else {

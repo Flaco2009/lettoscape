@@ -24,5 +24,6 @@
   "preload": false,
   "power": "balanced",
   "batterySaver": true,
-  "settingsVersion": 2
+  "settingsVersion": 3,
+  "pauseMode": "desktop"
 }

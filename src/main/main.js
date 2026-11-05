@@ -31,7 +31,13 @@ function loadSettings() {
   settings = { ...DEFAULTS, ...saved };
   // v2: alte Einstellungen waren viel zu hungrig fuer Laptops -> Leistung neu setzen
   if (!saved.settingsVersion || saved.settingsVersion < 2) {
-    Object.assign(settings, POWER.balanced, { power: 'balanced', preload: false, settingsVersion: 2 });
+    Object.assign(settings, POWER.balanced, { power: 'balanced', preload: false, settingsVersion: Math.max(2, settings.settingsVersion || 0) });
+    saveSettings();
+  }
+  // v3: neue Pause-Einstellung (nur auf dem Desktop animieren)
+  if (settings.settingsVersion < 3) {
+    settings.pauseMode = saved.pauseOnFullscreen === false ? 'never' : 'desktop';
+    settings.settingsVersion = 3;
     saveSettings();
   }
 }
@@ -163,6 +169,8 @@ async function updateTaskbarSnapshot() {
   if (!isWin || !settings.taskbarSync) return;
   const w = wallpapers.get(screen.getPrimaryDisplay().id);
   if (!w || w.isDestroyed()) return;
+  const pi = [...wallpapers.keys()].indexOf(screen.getPrimaryDisplay().id);
+  if (lastPause[pi] === 'hide') return; // gerade ausgeblendet -> spaeter
   try {
     const img = await w.webContents.capturePage();
     if (img.isEmpty()) return;
@@ -213,7 +221,7 @@ function startLoops() {
   }, 33);
 
   clearInterval(pauseTimer);
-  pauseTimer = setInterval(updatePause, 1500);
+  pauseTimer = setInterval(updatePause, 500);
 }
 
 // Pausieren, wenn man das Wallpaper nicht sieht:
@@ -222,37 +230,50 @@ function startLoops() {
 let locked = false;
 let lastPause = [];
 let pauseReason = '';
+// Zustand pro Bildschirm:
+//   'run'    – animiert
+//   'freeze' – Standbild: letztes Bild bleibt stehen, es wird nichts mehr gerechnet
+//              (eine App ist im Vordergrund, der Desktop ist aber noch teilweise zu sehen)
+//   'hide'   – gar nicht sichtbar (verdeckt, gesperrt, abwesend)
+let tick = 0;
+let lastCovered = [];
 function updatePause() {
   const displays = [...wallpapers.keys()].map((id) => screen.getAllDisplays().find((d) => d.id === id)).filter(Boolean);
-  let covered = displays.map(() => false);
+  const mode = settings.pauseMode || 'desktop';
+  let state = displays.map(() => 'run');
   let reason = '';
-  if (locked) { covered = covered.map(() => true); reason = 'gesperrt'; }
-  else if (powerMonitor.getSystemIdleTime() > 15 * 60) { covered = covered.map(() => true); reason = 'abwesend'; }
-  else if (isWin && settings.pauseOnFullscreen) {
-    try {
-      covered = desktop.coveredDisplays(displays.map((d) => screen.dipToScreenRect(null, d.workArea)));
-      if (covered.some(Boolean)) reason = 'verdeckt';
-    } catch (e) {
-      // Fallback: alte Vollbild-Pruefung
-      try {
-        const full = desktop.isForegroundFullscreen(displays.map((d) => screen.dipToScreenRect(null, d.bounds)));
-        covered = displays.map(() => full);
-        if (full) reason = 'vollbild';
-      } catch { covered = displays.map(() => false); }
+  if (locked) { state = state.map(() => 'hide'); reason = 'gesperrt'; }
+  else if (powerMonitor.getSystemIdleTime() > 15 * 60) { state = state.map(() => 'hide'); reason = 'abwesend'; }
+  else if (isWin && mode !== 'never') {
+    // App im Vordergrund? (sehr billige Abfrage, jede halbe Sekunde)
+    let onDesktop = true;
+    try { onDesktop = desktop.desktopActive(process.pid); } catch { onDesktop = true; }
+    // Verdeckte Bildschirme (Fensterliste durchgehen, etwas teurer -> seltener)
+    if (tick % 3 === 0 || lastCovered.length !== displays.length) {
+      try { lastCovered = desktop.coveredDisplays(displays.map((d) => screen.dipToScreenRect(null, d.workArea))); }
+      catch { lastCovered = displays.map(() => false); }
     }
+    state = displays.map((d, i) => {
+      if (lastCovered[i]) return 'hide';
+      if (mode === 'desktop' && !onDesktop) return 'freeze';
+      return 'run';
+    });
+    if (state.includes('hide')) reason = 'verdeckt';
+    else if (state.includes('freeze')) reason = 'app';
   }
+  tick++;
   displays.forEach((d, i) => {
-    if (lastPause[i] === covered[i]) return;
+    if (lastPause[i] === state[i]) return;
     const w = wallpapers.get(d.id);
-    if (w && !w.isDestroyed()) w.webContents.send('pause', covered[i]);
+    if (w && !w.isDestroyed()) w.webContents.send('pause', { paused: state[i] !== 'run', hidden: state[i] === 'hide' });
   });
-  const changed = covered.length !== lastPause.length || covered.some((c, i) => c !== lastPause[i]);
-  lastPause = covered;
-  paused = covered.length > 0 && covered.every(Boolean);
+  const changed = state.length !== lastPause.length || state.some((c, i) => c !== lastPause[i]);
+  lastPause = state;
+  paused = state.length > 0 && state.every((x) => x !== 'run');
   pauseReason = reason;
-  // Menue-Ecke nur bei echtem Vollbild/gesperrt ausblenden (bei maximierten Fenstern bleibt sie)
-  if (corner && !corner.isDestroyed()) {
-    const hide = locked || (isWin && settings.pauseOnFullscreen && (() => {
+  // Menue-Ecke nur bei echtem Vollbild/gesperrt ausblenden
+  if (corner && !corner.isDestroyed() && (changed || tick % 3 === 0)) {
+    const hide = locked || (isWin && mode !== 'never' && (() => {
       try { return desktop.isForegroundFullscreen(displays.map((d) => screen.dipToScreenRect(null, d.bounds))); } catch { return false; }
     })());
     if (hide && corner.isVisible()) corner.hide();
@@ -405,6 +426,7 @@ function updateSettings(patch) {
   saveSettings();
   if ('autostart' in patch && patch.autostart !== before.autostart) applyAutostart(settings.autostart);
   if ('allDisplays' in patch && patch.allDisplays !== before.allDisplays) rebuildWallpapers();
+  if ('pauseMode' in patch && patch.pauseMode !== before.pauseMode) { lastPause = []; updatePause(); }
   if ('cornerMenu' in patch && patch.cornerMenu !== before.cornerMenu) createCorner();
   if (panel && !panel.isDestroyed()) {
     if ('panelPinned' in patch) panel.setAlwaysOnTop(!!settings.panelPinned);
@@ -437,7 +459,7 @@ ipcMain.handle('get-settings', () => ({ settings, scenes: SCENES, version: app.g
 ipcMain.on('render-stats', (_e, st) => {
   if (panel && !panel.isDestroyed() && panel.isVisible()) panel.webContents.send('render-stats', st);
 });
-function powerInfo() { return { onBattery, battery: batteryMode(), pausedAll: lastPause.length > 0 && lastPause.every(Boolean), reason: pauseReason }; }
+function powerInfo() { return { onBattery, battery: batteryMode(), pausedAll: lastPause.length > 0 && lastPause.every((x) => x !== 'run'), reason: pauseReason }; }
 function sendPower() { if (panel && !panel.isDestroyed()) panel.webContents.send('power', powerInfo()); }
 ipcMain.handle('set-settings', (_e, patch) => updateSettings(patch));
 ipcMain.handle('reset-settings', () => updateSettings({ ...DEFAULTS }));

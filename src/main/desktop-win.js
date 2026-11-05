@@ -21,6 +21,7 @@ const RECT = koffi.struct('RECT', { left: 'long', top: 'long', right: 'long', bo
 const GetWindowRect = user32.func('bool __stdcall GetWindowRect(HWND hwnd, _Out_ RECT *rect)');
 const IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(HWND hwnd)');
 const IsIconic = user32.func('bool __stdcall IsIconic(HWND hwnd)');
+const GetWindowThreadProcessId = user32.func('uint32_t __stdcall GetWindowThreadProcessId(HWND hwnd, _Out_ uint32_t *pid)');
 const SystemParametersInfoW = user32.func('bool __stdcall SystemParametersInfoW(uint32_t action, uint32_t param, void *pv, uint32_t winIni)');
 
 const SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
@@ -159,4 +160,27 @@ function coveredDisplays(works) {
   return covered;
 }
 
-module.exports = { attach, getWallpaper, setWallpaper, isForegroundFullscreen, coveredDisplays, hwndOf };
+// Fenster, bei denen man "auf dem Desktop" ist: Desktop selbst, Taskleiste, Startmenue-Ueberlagerungen
+const DESKTOP_LIKE = new Set(['Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'NotifyIconOverflowWindow',
+  'TopLevelWindowForOverflowXamlIsland', 'Windows.UI.Core.CoreWindow', 'XamlExplorerHostIslandWindow', 'MultitaskingViewFrame',
+  'ForegroundStaging', 'TaskListThumbnailWnd']);
+
+/**
+ * Ist gerade der Desktop "aktiv" (kein anderes Programm im Vordergrund)?
+ * Eigene Fenster (Panel, Menue-Ecke) zaehlen als Desktop, damit man Aenderungen live sieht.
+ * Billig genug fuer eine Abfrage alle paar hundert Millisekunden.
+ */
+function desktopActive(ownPid) {
+  const fg = GetForegroundWindow();
+  if (!fg) return true;
+  const name = new Uint16Array(128);
+  const len = GetClassNameW(fg, name, 128);
+  const cls = String.fromCharCode(...name.slice(0, len));
+  if (DESKTOP_LIKE.has(cls)) return true;
+  if (IsIconic(fg) || !IsWindowVisible(fg)) return true;
+  const pid = [0];
+  GetWindowThreadProcessId(fg, pid);
+  return pid[0] === ownPid;
+}
+
+module.exports = { attach, getWallpaper, setWallpaper, isForegroundFullscreen, coveredDisplays, desktopActive, hwndOf };

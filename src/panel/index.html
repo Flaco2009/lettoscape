@@ -80,7 +80,12 @@
       <label class="toggle"><span>Automatisch an die Hardware anpassen</span><input type="checkbox" data-key="autoPerformance"><i></i></label>
       <p class="hint">Senkt Auflösung und Bildrate selbst, wenn die Grafikkarte zu viel zu tun hat oder nicht mitkommt, und fährt wieder hoch, wenn Luft ist.</p>
       <label class="toggle"><span>Im Akkubetrieb automatisch leise</span><input type="checkbox" data-key="batterySaver"><i></i></label>
-      <label class="toggle"><span>Pausieren, wenn Fenster den Desktop verdecken</span><input type="checkbox" data-key="pauseOnFullscreen"><i></i></label>
+      <p class="label">Animieren</p>
+      <div class="seg" data-key="pauseMode">
+        <button data-val="desktop">Nur auf dem Desktop</button>
+        <button data-val="visible">Wenn sichtbar</button>
+        <button data-val="never">Immer</button>
+      </div>
       <details class="adv">
         <summary>Erweitert</summary>
         <div class="seg" data-key="fps" data-num>

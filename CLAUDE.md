@@ -15,7 +15,11 @@ Cozy Live-Wallpaper (Electron, Windows zuerst, Linux später). Sprache im UI und
 ## Leistung / Wärme
 - Leistungsstufen `power` = eco | balanced | beauty | custom (Werte in `main.js` `POWER`/`BUDGET` und im Panel `PRESETS`). Im Akkubetrieb mit `batterySaver` erzwingt `wallSettings()` die Stufe eco.
 - Renderer: feste Pixel-Obergrenze je Stufe (`maxPixels`), misst GPU-Zeit (EXT_disjoint_timer_query_webgl2) und regelt `dynScale` (min. 55 %), danach die FPS (`fpsLimit`) herunter. Live-Werte gehen per `render-stats` ans Panel.
-- Pause pro Bildschirm, wenn ein Fenster den Arbeitsbereich verdeckt (`desktop-win.js` `coveredDisplays`), bei gesperrtem Bildschirm und nach 15 min Abwesenheit. Pausiert = Canvas versteckt, Schleife wacht nur alle 500 ms auf.
+- Pause pro Bildschirm, Zustände `run` / `freeze` / `hide` (`main.js` `updatePause`, alle 500 ms):
+  - `freeze` (Standbild): Einstellung `pauseMode = 'desktop'` und eine fremde App ist im Vordergrund (`desktop-win.js` `desktopActive`; Desktop, Taskleiste und eigene Fenster zählen als Desktop). Es wird nichts gezeichnet, das letzte Bild bleibt stehen, Sound läuft weiter.
+  - `hide`: Bildschirm verdeckt (`coveredDisplays`), gesperrt oder 15 min Abwesenheit. Canvas versteckt, Sound aus.
+  - `pauseMode`: `desktop` (Standard) | `visible` (nur bei verdeckt pausieren) | `never`.
+  - Pausiert wacht die Render-Schleife nur alle 500 ms auf.
 - Shader: Bäume nur prüfen, wenn der Strahl auf Baumhöhe ist (`TREE_TOP`), weniger Oktaven in der Ferne (`groundOct`), `farMountains` erst ab Startdistanz.
 - Screenshots/Vergleiche immer mit `&adapt=0`, sonst regelt die langsame Software-GPU die Auflösung herunter und das Bild wirkt blass.
 
