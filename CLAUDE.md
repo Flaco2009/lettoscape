@@ -19,6 +19,11 @@ Cozy Live-Wallpaper (Electron, Windows zuerst, Linux später). Sprache im UI und
 - Shader: Bäume nur prüfen, wenn der Strahl auf Baumhöhe ist (`TREE_TOP`), weniger Oktaven in der Ferne (`groundOct`), `farMountains` erst ab Startdistanz.
 - Screenshots/Vergleiche immer mit `&adapt=0`, sonst regelt die langsame Software-GPU die Auflösung herunter und das Bild wirkt blass.
 
+## Bild-Rekonstruktion (post.js)
+- Szene rendert in ein Zwischenbild niedriger Auflösung mit Sub-Pixel-Jitter (`uJitter`, in Szenen-Shadern über `FC = gl_FragCoord.xy + uJitter` nutzen, nie `gl_FragCoord` direkt für Strahlen/UVs).
+- `post.js` rekonstruiert zeitlich in voller Auflösung (Catmull-Rom + Verlauf mit Neighborhood-Clamping), schärft nach und macht beim Szenenwechsel den „Einbrenn“-Übergang. Kein Ladebildschirm: alte Szene läuft weiter, bis die neue kompiliert ist.
+- Zufallsrauschen in Shadern (z. B. Volumen-Jitter) mit `fract(uTime)` variieren, dann glättet die Rekonstruktion es weg.
+
 ## Testen
 - App: `npm install && npm start`
 - Nur eine Szene im Browser: `npx http-server src -p 8080`, dann `http://localhost:8080/wallpaper/index.html?scene=camping&hour=22&weather=rain`

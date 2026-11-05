@@ -97,7 +97,7 @@
       return;
     }
     if (!stats) { t.textContent = 'Messe …'; return; }
-    let txt = stats.fps + ' FPS · ' + stats.w + '×' + stats.h;
+    let txt = stats.fps + ' FPS · ' + stats.w + '×' + stats.h + (stats.outW ? ' → ' + stats.outW + '×' + stats.outH : '');
     if (stats.load !== null && stats.load !== undefined) {
       txt += ' · GPU ~' + stats.load + ' %';
       if (stats.load > stats.budget * 1.3) box.classList.add('hot');

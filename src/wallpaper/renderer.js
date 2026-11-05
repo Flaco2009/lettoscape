@@ -1,6 +1,7 @@
 // Lettoscape – Wallpaper-Renderer (WebGL2, Vollbild-Shader)
 import { scenes } from './scenes/index.js';
 import { Ambience } from './audio.js';
+import { createPost } from './post.js';
 
 const canvas = document.getElementById('c');
 const errBox = document.getElementById('err');
@@ -42,7 +43,7 @@ in vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
 let prog = null, uni = {}, currentScene = null, currentId = null;
 
-const UNIFORMS = ['uRes', 'uTime', 'uHour', 'uRain', 'uSnow', 'uFog', 'uClouds', 'uBright', 'uMouse', 'uQuality'];
+const UNIFORMS = ['uRes', 'uTime', 'uHour', 'uRain', 'uSnow', 'uFog', 'uClouds', 'uBright', 'uMouse', 'uQuality', 'uJitter'];
 
 function fail(msg) {
   // Vollbild-Fehler nur, wenn gar nichts angezeigt werden kann
@@ -66,7 +67,6 @@ const failed = new Map();  // id -> Fehlertext
 const retries = new Map(); // id -> Anzahl Neuversuche (bei voruebergehenden GPU-Fehlern)
 let wantedId = null;
 let warmTimer = null;
-let loadingHint = null;
 
 function report(id, state, extra = {}) {
   if (api && api.sceneStatus) api.sceneStatus({ id, state, ...extra });
@@ -133,29 +133,27 @@ function pollJobs() {
     report(id, 'ready', { ms });
     if (id === wantedId) activate(id);
   }
-  // Ladehinweis auf dem Wallpaper, falls es laenger dauert
-  const job = wantedId && jobs.get(wantedId);
-  showHint(job && performance.now() - job.t0 > 1500 ? scenes[wantedId].name : null);
 }
 
-let fadeTimer = null;
+// Kein Ladebildschirm: die alte Szene laeuft weiter, bis die neue fertig ist.
+// Dann brennt sich die neue Szene ein und wird dabei sichtbar immer schaerfer (siehe post.js).
+let buildT0 = -1e9;
 function activate(id) {
   const c = cache.get(id);
   if (!c) return;
-  const swap = () => {
-    prog = c.p;
-    uni = c.uni;
-    currentScene = scenes[id];
-    currentId = id;
-    errBox.style.display = 'none';
-    canvas.style.opacity = '1';
-  };
-  clearTimeout(fadeTimer);
   scheduleWarmup();
-  if (!prog || id === currentId) { swap(); return; }
-  // sanft ueberblenden: kurz abdunkeln, Szene tauschen, wieder aufhellen
-  canvas.style.opacity = '0';
-  fadeTimer = setTimeout(swap, 420);
+  if (id === currentId && prog) return;
+  const fresh = !prog;
+  prog = c.p;
+  uni = c.uni;
+  currentScene = scenes[id];
+  currentId = id;
+  errBox.style.display = 'none';
+  if (post) {
+    post.beginTransition(performance.now(), fresh);
+    buildT0 = performance.now();
+    resize();
+  }
 }
 
 function loadScene(id) {
@@ -181,20 +179,6 @@ function scheduleWarmup() {
   }, 15000);
 }
 
-function showHint(name) {
-  if (!loadingHint) {
-    loadingHint = document.createElement('div');
-    loadingHint.id = 'loading';
-    document.body.appendChild(loadingHint);
-  }
-  if (name) {
-    loadingHint.textContent = name + ' wird vorbereitet …';
-    loadingHint.classList.add('on');
-  } else {
-    loadingHint.classList.remove('on');
-  }
-}
-
 if (!gl) fail('WebGL2 wird von deiner Grafikkarte/deinem Treiber nicht unterstuetzt.');
 
 // GPU-Absturz / Treiber-Reset: Bild selbst wiederherstellen
@@ -210,6 +194,8 @@ canvas.addEventListener('webglcontextlost', (e) => {
 canvas.addEventListener('webglcontextrestored', () => {
   console.warn('WebGL-Kontext wiederhergestellt');
   initGeometry();
+  post = createPost(gl);
+  resize();
   loadScene(wantedId || settings.scene);
 });
 
@@ -222,6 +208,7 @@ function initGeometry() {
   gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 }
 if (gl) initGeometry();
+let post = gl ? createPost(gl) : null;
 
 // ---------- Aufloesung + GPU-Budget ----------
 // Gerendert wird in geringerer Aufloesung und hochskaliert (die Szenen sind weich, das faellt kaum auf).
@@ -235,18 +222,35 @@ function maxPixels() {
   const b = settings.gpuBudget ?? 0.25;
   return b <= 0.15 ? 0.45e6 : b <= 0.3 ? 0.9e6 : b <= 0.45 ? 1.4e6 : 2.1e6;
 }
+// Aufbau nach Szenenwechsel: erst grob, dann immer feiner
+const BUILD_STEPS = [0.3, 0.45, 0.65, 0.85, 1];
+function buildMul(now) {
+  const i = Math.floor((now - buildT0) / 320);
+  return i >= BUILD_STEPS.length ? 1 : BUILD_STEPS[Math.max(0, i)];
+}
+let lastBuild = 1;
+
 function resize() {
+  // Ausgabe: volle Bildschirmaufloesung (gedeckelt bei ~1440p, darueber skaliert der Browser)
+  let ow = window.innerWidth * devicePixelRatio;
+  let oh = window.innerHeight * devicePixelRatio;
+  const oc = Math.min(1, Math.sqrt(3.7e6 / Math.max(ow * oh, 1)));
+  ow = Math.max(160, Math.round(ow * oc));
+  oh = Math.max(90, Math.round(oh * oc));
+  if (canvas.width !== ow || canvas.height !== oh) {
+    canvas.width = ow;
+    canvas.height = oh;
+  }
+  // Szene: intern kleiner (Leistung), wird in post.js rekonstruiert
   const base = Math.min(Math.max(settings.renderScale, 0.25), 1.5);
   let w = window.innerWidth * devicePixelRatio * base;
   let h = window.innerHeight * devicePixelRatio * base;
   const cap = Math.sqrt(maxPixels() / Math.max(w * h, 1));
-  const k = Math.min(1, cap) * dynScale;
-  w = Math.max(160, Math.round(w * k));
-  h = Math.max(90, Math.round(h * k));
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w;
-    canvas.height = h;
-  }
+  lastBuild = buildMul(performance.now());
+  const k = Math.min(1, cap) * dynScale * lastBuild;
+  w = Math.max(96, Math.min(ow, Math.round(w * k)));
+  h = Math.max(54, Math.min(oh, Math.round(h * k)));
+  if (post) post.setSize(ow, oh, w, h);
 }
 
 // GPU-Zeit messen (wenn der Treiber es kann)
@@ -310,7 +314,8 @@ function adapt(now) {
   next = Math.min(1, Math.max(MIN_DYN, Math.round(next * 20) / 20));
   if (next !== dynScale) { dynScale = next; resize(); }
   if (api && api.renderStats) {
-    api.renderStats({ fps: Math.round(fps), target: Math.min(target, fpsLimit), w: canvas.width, h: canvas.height,
+    const [iw, ih] = post ? post.inSize : [canvas.width, canvas.height];
+    api.renderStats({ fps: Math.round(fps), target: Math.min(target, fpsLimit), w: iw, h: ih, outW: canvas.width, outH: canvas.height,
       load: load === null ? null : Math.round(load * 100), budget: Math.round(budget * 100),
       gpuMs: timer && gpuSamples ? Math.round(gpuMs * 10) / 10 : null, battery: !!settings.battery, paused });
   }
@@ -389,10 +394,14 @@ function frame(now) {
 
   ambience.setWeather(cur.rain, cur.hour);
 
-  if (!prog || gl.isContextLost()) return;
-  gl.viewport(0, 0, canvas.width, canvas.height);
+  if (!prog || !post || gl.isContextLost()) return;
+  if (buildMul(now) !== lastBuild) resize();   // Aufbau-Stufe weiter
+  const [iw, ih] = post.inSize;
+  const [jx, jy] = post.jitter();
+  post.bindScene();
   gl.useProgram(prog);
-  gl.uniform2f(uni.uRes, canvas.width, canvas.height);
+  gl.uniform2f(uni.uRes, iw, ih);
+  gl.uniform2f(uni.uJitter, jx, jy);
   gl.uniform1f(uni.uTime, simTime);
   gl.uniform1f(uni.uHour, cur.hour);
   gl.uniform1f(uni.uRain, cur.rain);
@@ -410,6 +419,14 @@ function frame(now) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   if (q) { gl.endQuery(timer.TIME_ELAPSED_EXT); queries.push(q); }
   frames++;
+
+  // Anteil des neuen Bildes: klein = ruhig und scharf, groesser bei Bewegung / waehrend des Aufbaus
+  const mouseMove = Math.hypot(mouse.tx - mouse.x, mouse.ty - mouse.y);
+  let alpha = 0.1;
+  alpha = Math.max(alpha, Math.min(0.45, mouseMove * 3));
+  alpha = Math.max(alpha, cur.rain * 0.22, cur.snow * 0.18);
+  if (lastBuild < 1) alpha = 0.5;
+  post.finish(alpha, settings.sharpen ?? 0.6, now);
 }
 
 if (gl) {
@@ -427,6 +444,7 @@ if (api) {
     paused = p;
     ambience.update({ ...settings, sound: settings.sound && !p });
     canvas.style.visibility = p ? 'hidden' : 'visible';  // Compositor muss nichts mehr zeichnen
+    if (!p && post) post.reset();                         // altes Bild nicht nachziehen
   });
   api.ready();
 } else {

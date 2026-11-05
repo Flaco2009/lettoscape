@@ -14,7 +14,8 @@ uniform float uFog;      // 0..1  Tal-Nebel
 uniform float uClouds;   // 0..1  Bewoelkung
 uniform float uBright;   // 0.5..1.5
 uniform vec2  uMouse;    // -1..1 Parallax
-uniform float uQuality;  // 0 = niedrig, 1 = hoch
+uniform float uQuality;
+uniform vec2  uJitter;   // Sub-Pixel-Versatz fuer die zeitliche Rekonstruktion (post.js)  // 0 = niedrig, 1 = hoch
 
 // ZERO: siehe common.js – verhindert Ausrollen von Schleifen (schnelleres Kompilieren unter Windows)
 #define ZERO min(int(uRes.x), 0)
@@ -369,7 +370,8 @@ vec3 aces(vec3 x) {
 // ---------- Main ----------
 void main() {
   setupLight();
-  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec2 FC = gl_FragCoord.xy + uJitter;
+  vec2 uv = (FC - 0.5 * uRes) / uRes.y;
 
   vec3 ro = vec3(uMouse.x * 0.6, 2.3 + uMouse.y * 0.15, 0.0);
   ro += vec3(sin(uTime * 0.11) * 0.06, sin(uTime * 0.17) * 0.035, sin(uTime * 0.07) * 0.05);
@@ -450,7 +452,7 @@ void main() {
     col = mix(col, applyFog(col, ro, rd, 1400.0), 0.35 * smoothstep(0.25, 0.0, rd.y));
   }
 
-  vec2 suv = gl_FragCoord.xy / uRes - 0.5;
+  vec2 suv = FC / uRes - 0.5;
   suv.x *= uRes.x / uRes.y;
   col = birds(suv, col);
   col = fireflies(suv, col);
@@ -464,7 +466,7 @@ void main() {
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, 1.12);
   // Vignette + Korn
-  vec2 q = gl_FragCoord.xy / uRes;
+  vec2 q = FC / uRes;
   col *= 0.55 + 0.45 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.18);
   col += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * 0.012;
   fragColor = vec4(col, 1.0);

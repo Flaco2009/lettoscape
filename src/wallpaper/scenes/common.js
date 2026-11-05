@@ -27,6 +27,7 @@ uniform float uClouds;
 uniform float uBright;
 uniform vec2  uMouse;
 uniform float uQuality;
+uniform vec2  uJitter;   // Sub-Pixel-Versatz fuer die zeitliche Rekonstruktion (post.js)
 
 // ZERO ist immer 0, aber der Compiler weiss das nicht. Schleifen, die bei ZERO starten,
 // werden deshalb nicht ausgerollt und Funktionen darin nicht vervielfacht. Das verkuerzt die
@@ -672,7 +673,8 @@ vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59
 // ---------- Main ----------
 void main() {
   setupLight();
-  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec2 FC = gl_FragCoord.xy + uJitter;
+  vec2 uv = (FC - 0.5 * uRes) / uRes.y;
 
   vec3 ro, fw;
   sceneCamera(ro, fw);
@@ -773,7 +775,7 @@ void main() {
 
   col = sceneVolume(ro, rd, tHit, col);
 
-  vec2 suv = gl_FragCoord.xy / uRes - 0.5;
+  vec2 suv = FC / uRes - 0.5;
   suv.x *= uRes.x / uRes.y;
   float skyMask = tHit >= TMAX ? 1.0 : 0.0;
   col = shootingStars(suv, col, skyMask);
@@ -791,7 +793,7 @@ void main() {
   col = mix(col, col * col * (3.0 - 2.0 * col), 0.35);
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, 1.18);
-  vec2 q = gl_FragCoord.xy / uRes;
+  vec2 q = FC / uRes;
   col *= 0.55 + 0.45 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.18);
   col += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * 0.012;
   fragColor = vec4(col, 1.0);
