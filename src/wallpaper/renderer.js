@@ -22,6 +22,7 @@ let settings = {
   fps: 30,
   renderScale: parseFloat(params.get('scale') || '0.75'),
   quality: params.get('quality') || 'high',
+  autoPerformance: params.get('auto') !== '0',
   parallax: true,
   sound: false,
   volume: 0.5,
@@ -211,8 +212,55 @@ function initGeometry() {
 }
 if (gl) initGeometry();
 
+// ---------- Adaptive Performance ----------
+// Lettoscape soll auf schwacher wie starker Hardware laufen. Dazu wird die echte Zeit zwischen
+// angezeigten Frames gemessen (unabhaengig vom eigenen FPS-Limit): kommt die GPU nicht mehr mit,
+// werden requestAnimationFrame-Callbacks spaeter aufgerufen. Haelt das laenger an, schraubt Lettoscape
+// Aufloesung/Qualitaet/FPS schrittweise runter - und wieder hoch, sobald es sich erholt hat.
+const PERF_STEPS = [
+  { scale: 1,    quality: null,  fpsCap: Infinity },
+  { scale: 0.75, quality: null,  fpsCap: Infinity },
+  { scale: 0.55, quality: 'low', fpsCap: Infinity },
+  { scale: 0.4,  quality: 'low', fpsCap: 18 },
+];
+let perfLevel = 0;
+let perfEma = 1000 / 60;
+let perfLastTs = 0;
+let perfBadStreak = 0, perfGoodStreak = 0, perfLastCheck = 0;
+
+function resetAdaptivePerf() {
+  perfLevel = 0;
+  perfEma = 1000 / 60;
+  perfBadStreak = 0;
+  perfGoodStreak = 0;
+  perfLastCheck = 0;
+}
+
+function perfTick(now) {
+  if (perfLastTs) perfEma += (Math.min(now - perfLastTs, 250) - perfEma) * 0.08;
+  perfLastTs = now;
+  if (!settings.autoPerformance) return;
+  if (!perfLastCheck) { perfLastCheck = now; return; }
+  if (now - perfLastCheck < 2500) return;
+  perfLastCheck = now;
+  const achievedFps = 1000 / perfEma;
+  if (achievedFps < 24) {
+    perfGoodStreak = 0;
+    if (++perfBadStreak >= 1 && perfLevel < PERF_STEPS.length - 1) { perfLevel++; perfBadStreak = 0; resize(); }
+  } else if (achievedFps > 50) {
+    perfBadStreak = 0;
+    if (++perfGoodStreak >= 3 && perfLevel > 0) { perfLevel--; perfGoodStreak = 0; resize(); }
+  } else {
+    perfBadStreak = 0; perfGoodStreak = 0;
+  }
+}
+
+function effectiveRenderScale() { return settings.renderScale * PERF_STEPS[perfLevel].scale; }
+function effectiveQuality() { return PERF_STEPS[perfLevel].quality || settings.quality; }
+function effectiveFps() { return Math.min(settings.fps, PERF_STEPS[perfLevel].fpsCap); }
+
 function resize() {
-  const s = Math.min(Math.max(settings.renderScale, 0.3), 1.5);
+  const s = Math.min(Math.max(effectiveRenderScale(), 0.3), 1.5);
   const w = Math.round(window.innerWidth * devicePixelRatio * s);
   const h = Math.round(window.innerHeight * devicePixelRatio * s);
   if (canvas.width !== w || canvas.height !== h) {
@@ -237,7 +285,9 @@ function lerp(a, b, k) { return a + (b - a) * k; }
 const ambience = new Ambience();
 
 function applySettings(s) {
+  const sceneChanged = s.scene && s.scene !== settings.scene;
   settings = { ...settings, ...s };
+  if (sceneChanged) resetAdaptivePerf();
   loadScene(settings.scene);
   resize();
   ambience.update(settings);
@@ -249,8 +299,9 @@ cur.hour = targetHour();
 function frame(now) {
   requestAnimationFrame(frame);
   if (gl && !gl.isContextLost()) pollJobs();
-  if (paused) { last = now; return; }
-  const minDt = 1000 / Math.max(5, settings.fps);
+  if (paused) { last = now; perfLastTs = 0; return; }
+  perfTick(now);
+  const minDt = 1000 / Math.max(5, effectiveFps());
   if (now - lastDraw < minDt - 1) return;
   lastDraw = now;
 
@@ -288,7 +339,7 @@ function frame(now) {
   gl.uniform1f(uni.uClouds, cur.clouds);
   gl.uniform1f(uni.uBright, settings.brightness);
   gl.uniform2f(uni.uMouse, mouse.x, mouse.y);
-  gl.uniform1f(uni.uQuality, settings.quality === 'high' ? 1 : 0);
+  gl.uniform1f(uni.uQuality, effectiveQuality() === 'high' ? 1 : 0);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -313,4 +364,11 @@ if (api) {
 }
 
 // Fuer Screenshots/Tests
-window.__lettoscape = { applySettings, get settings() { return settings; }, cur, currentId: () => currentId, cached: () => [...cache.keys()] };
+window.__lettoscape = {
+  applySettings,
+  get settings() { return settings; },
+  cur,
+  currentId: () => currentId,
+  cached: () => [...cache.keys()],
+  perf: () => ({ level: perfLevel, achievedFps: Math.round(1000 / perfEma), scale: effectiveRenderScale(), quality: effectiveQuality(), fps: effectiveFps() }),
+};

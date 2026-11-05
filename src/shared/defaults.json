@@ -10,6 +10,7 @@
   "fps": 30,
   "renderScale": 0.75,
   "quality": "high",
+  "autoPerformance": true,
   "parallax": true,
   "sound": false,
   "volume": 0.5,

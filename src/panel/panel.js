@@ -139,7 +139,7 @@
   function mockApi() {
     const defaults = {
       scene: 'bergsee', timeMode: 'real', hour: 20, weather: 'clear', fog: 0.45, clouds: 0.35, brightness: 1,
-      speed: 1, fps: 30, renderScale: 0.75, quality: 'high', parallax: true, sound: false, volume: 0.5,
+      speed: 1, fps: 30, renderScale: 0.75, quality: 'high', autoPerformance: true, parallax: true, sound: false, volume: 0.5,
       autostart: true, pauseOnFullscreen: true, allDisplays: true, showInTaskbar: true, cornerMenu: true, panelPinned: false, preload: true, taskbarSync: true,
     };
     let st = { ...defaults };
