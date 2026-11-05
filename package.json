@@ -22,11 +22,26 @@
   "build": {
     "appId": "ch.flaco2009.lettoscape",
     "productName": "Lettoscape",
-    "directories": { "output": "dist" },
-    "files": ["src/**/*", "assets/**/*", "package.json"],
-    "asarUnpack": ["node_modules/koffi/**/*"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**/*"
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "assets/icon.ico"
     },
     "nsis": {
@@ -37,9 +52,16 @@
       "runAfterFinish": true
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Utility"
     }
+  },
+  "allowScripts": {
+    "koffi@2.16.3": true,
+    "electron-winstaller@5.4.0": true
   }
 }
